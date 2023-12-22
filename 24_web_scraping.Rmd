@@ -1,0 +1,349 @@
+---
+title: "r4ds_ch24_web_scraping"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+The basics of web scraping. You should use the API if the webiste has one. If not, here are the basics. 
+
+# Prerequisites
+
+```{r}
+pacman::p_load(tidyverse, here, broom, janitor, repurrrsive, jsonlite, rvest, devtools)
+
+devtools::install_github("seasmith/AlignAssign")
+library(AlignAssign)
+```
+
+# Ethics and Legalities
+
+If the data is public, nonpersonal, and factual you're likely to be OK. 
+
+If it is not any of these, and you're trying to make some money with it, talk to a lawyer. 
+
+## Terms of Service
+
+If you look closely at the Terms of Service on most websites they will say it is specifically illegal to web scrape. If you need an account they are not public, so even if it's just in the Terms of Service on the Footer, you're likely ok in the United States. 
+
+However, this is not the case in Europe where lack of awareness of the terms of service is not sufficient case to avoid prosecution. 
+
+# Personally Identifiable Information
+
+You should also be extremely cautious in extracting and storing any PII. The GDPR in Europe is extremely strict on this, and really it's just bad practice. Don't do it. If you need to read up on the legal stories with OKCupid etc. and just acknowledge that Meta is always in trouble with this and they have great lawyers. 
+
+# Copyright
+
+Usually does not apply to data, although in Europe there is a sui generis clause that protects databases. 
+
+Recipes are not copy-writable, but the novella provided are. Which is why you see so much text prior to a recipe you find online. 
+
+Fair use is usually what applies to most scraping. In that you agree you are using the data for research or noncommercial purposes and you take only what you need. 
+
+# HTML Basics
+
+HyperText Markup Language (HTML) is how many websites are written. HTML is hierarchical structured formed by elements, which consist of a start tag optional attributes and end tag. Since html tabs start with `<` and `>` you can't write them directly in R. So instead you need the escapes: e.g., `&gt` and `&lt`.
+
+## Elements
+
+* Every HTML page must be in an <html> element, and it must have two children: <head> which contains document metadata like the page title, and <body>, which contains the content you see in the browser. 
+* Block tags like <h1> heading1, <section> (section), <p> (paragraph), and <ol> ordered list, from the overall structure of the page. 
+* Inline tags like <b> (bold) </b>, <i> (italics) </i>, and <a> (link) </a>
+
+If you find a tag that is unfamiliar, whelp you've got google. 
+
+## Attributes
+
+Tags can have named attributes, which look like `name1 = 'value1' name2 = 'value2'`. Two of the most important are id and class, which are used in conjunction with Cascading Style Sheets (CSS) to control the visual appearance of the page. These are likely most important when scraping. 
+
+# Extracting Data
+
+To get started scraping, you'll need the URL of the website or page you plan to scrape (you can usually just copy this from your web browser). You will then need to read the HTML with a function here, `read_html()`
+
+```{r}
+html <- read_html("http://rvest.tidyverse.org/")
+
+html
+
+```
+`rvest` package also allows you to _write_ html:
+
+```{r}
+html <- minimal_html("
+  <p> This is a pargraph</p>
+    <ul>
+    <li>This is a bulleted list </li>
+    </ul>
+")
+
+html
+```
+Now that we have the data in R we need to learn how to extract the data we care about. First we learn about CSS selectors, and then HTML tables. 
+
+## Find Elements
+
+CSS is a tool for defining the visual styling of HTML. CSS includes a mini language for identifying CSS selectors. CSS selectors define patterns for locating HTML.
+
+* `p` slects all <p> elements.
+* `.title` selects all elements with class "title"
+* `#title` selects the element with the id attribute that equals "title." id elements must be unique within a document, so this will only ever select a single element. 
+
+```{r}
+html <- minimal_html("
+                     <h1> This is a heading</h1>
+                     <p id = 'first'> This is a paragraph </p>
+                     <p class = 'important'> This is an important paragraph</p>
+                     ")
+
+html |> 
+  html_elements("p")
+
+html |> 
+  html_elements(".important")
+
+html |> 
+  html_elements("#first")
+
+# html_element, without the plural, will return the same number of outputs as inputs
+html |> 
+  html_element("p")
+```
+
+The important distinction between `html_elements()` and `html_element()` is when you do not supply an element to the first, it returns a vector of length 0, and if you don't supply an element to the second it reports `missing`. 
+
+```{r}
+# Vector 0
+html |> 
+  html_elements("b")
+
+#NA
+html |> 
+  html_element("b")
+```
+
+## Nesting Selections
+
+Typically, you will use both `html_elements()` and `html_element()` together, the first to find the list of items, and the second to define variables. 
+
+Here is an example:
+
+```{r}
+html <- minimal_html("
+                     <ul>
+                     <li><b>C-3PO</b> is a <i>droid</i> that weighs <span class = 'weight' > 167 kg</span></li>
+                     <li><b>R4-P17</b> is a <i>droid</i></li>
+                     <li><b>R2-D2</b> is a <i>droid</i> that weighs <span class = 'weight' > 96 kg</span></li>
+                     <li><b>Yoda</b>weighs <span class = 'weight' > 66 kg</span></li>
+                     </ul>
+                     ")
+
+characters <- html |> 
+  html_elements("li")
+
+characters
+
+characters |>  html_element("b")
+
+characters |> html_element(".weight")
+
+characters |>  html_elements(".weight")
+```
+
+## Text and Attributes
+
+`html_text2()` extracts the plain-text contents of an HTML element:
+
+```{r}
+characters |> 
+  html_element("b") |> 
+  html_text2()
+
+characters |> 
+  html_element(".weight") |> 
+  html_text2()
+
+```
+
+`html_attr()`extracts data from attributes:
+
+!Note: `html_attr()` always returns a string so if you are returning numbers or a date you will need to do some post processing. 
+
+```{r}
+html <- minimal_html(
+  "
+  <p><a href='https://en.wikipedia.org/wiki/Cat'>cats</a></p>
+  <p><a href='https://en.wikipedia.org/wiki/Dog'>dogs</a></p>
+  "
+)
+
+html |> 
+  html_elements("p") |> 
+  html_element("a") |> 
+  html_attr("href")
+```
+
+## Tables
+
+If you're lucky, the data you are reading from a page will be a table format (e.g., it has a rectangle around it (think ESPN)). If so, that's pretty straightforward, and could even be copy and pasted into Excel. 
+
+Tables are built up from four main elements (and will be important for later when we discuss communicating and presenting data)
+
+* `<table>` the table
+* `<tr>` table row
+* `<th>` table heading
+* `<td>` table data
+
+```{r}
+html <- minimal_html(
+  "
+  <table class= 'mytable'>
+  <tr><th>x</th> <th>y</th></tr>
+  <tr><td>1.5</th> <th>2.7</th></tr>
+  <tr><td>4.9</th> <th>1.3</th></tr>
+  <tr><td>7.2</th> <th>8.7</th></tr>
+  </table>
+")
+
+# in this case, x and y are converted to numbers, which is accurate; however, in future cases you might want to turn on convert = FALSE
+html |> 
+  html_element(".mytable") |> 
+  html_table()
+```
+
+## Finding the Right Selectors
+
+Figuring out the selector you need is typically the hardest part of scraping. The tradeoff is finding one that is specific (i.e., it doesn't bring with it shit you don't care about) and sensitive (i.e., ti does select everything you care about).
+
+The two main tools to help: `SelectorGadget` and your browser's developer tools.
+
+# Putting it All Together
+
+## Star Wars
+
+* This may not work everytime if the website is updated
+
+```{r}
+url <- "https://rvest.tidyverse.org/articles/starwars.html"
+
+str(url)
+
+html <- read_html(url)
+
+str(html)
+
+section <- html |> 
+  html_elements("section")
+
+section
+
+section |> 
+  html_element("h2") |> 
+  html_text2()
+
+section |> 
+  html_element(".director") |> 
+  html_text2()
+```
+
+So, once we've identified what we want, we can wrap everything in a tibble:
+
+```{r}
+tibble(
+  title = section |> 
+    html_element("h2") |> 
+    html_text2(),
+  released = section |> 
+    html_element("p") |> 
+    html_text2() |> 
+    str_remove("Released: ") |> 
+    parse_date(),
+  director = section |> 
+    html_element(".director") |> 
+    html_text2(),
+  intro = section |> 
+    html_element(".crawl") |> 
+    html_text2()
+)
+
+```
+
+## IMDb Top Films
+
+Downloading the top 250 movies from IMDb. It looks to be in clear tabular structure so we can start with `html_table()`.
+
+```{r}
+url <- "https://web.archive.org/web/20220201012049/https://www.imdb.com/chart/top/"
+html <- read_html(url)
+
+table <- html |> 
+  html_element("table") |> 
+  html_table()
+
+table
+```
+
+So in all this did an ok job. There are few empty columns and some cleaning to do (e.g., trim whit space, change variable names, etc.). Let's do that now.
+
+```{r}
+ratings <- table |>
+  select(
+    rank_title_year = `Rank & Title`,
+    rating          = `IMDb Rating`
+  ) |> 
+  mutate(
+    rank_title_year = str_replace_all(rank_title_year, "\n +", " ")
+  ) |> 
+  separate_wider_regex(
+    rank_title_year,
+    patterns        = c(
+      rank          = "\\d+", "\\. ",
+      title         = ".+", " +\\(",
+      year          = "\\d+", "\\)"
+    )
+  )
+ratings
+```
+
+You should spend a little bit of time spelunking the source html because you might find some extra data. In this case, the number of votes. 
+
+```{r}
+html |> 
+  html_elements("td strong") |> 
+  head() |> 
+  html_attr("title")
+
+```
+
+In conjunction with separate wider included in the code above and we can add these data to our file: 
+
+```{r}
+ratings |>
+  mutate(
+    rating_n = html |> html_elements("td strong") |> html_attr("title")
+  ) |> 
+  separate_wider_regex(
+    rating_n,
+    patterns = c(
+      "[0-9.]+ based on ",
+      number = "[0-9,]+",
+      " user ratings"
+    )
+  ) |> 
+  mutate(
+    number = parse_number(number)
+  ) |> 
+  arrange(desc(number))
+```
+
+## Dynamci Sites
+
+Occasionally you will come across a website that dynamically creates its data such that the html does not look anything like what you see. That's because it's using JavaScript to dynamically update the webpage. As such, you can use a much more expensive function in rvest (that has to simulate the JavaScript as it works). Let's check that out on the webpage for the book.
+
