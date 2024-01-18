@@ -1,0 +1,723 @@
+---
+title: "r4ds_ch25_functions"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+Writing functions will increase your reach and scope as a data scientist, in three main ways:
+1) You can give a function an evocative name that makes your code easier to understand.
+2) As requirements change, you need to update code only in one place, instead of many.
+3) You eliminate the chance of making incidental mistakes when you copy and paste (i.e., updating variable name in one place but not in another)
+4) It makes it easier to reuse work from project to project, increasing your productivity over time
+
+# Prerequisites
+
+```{r}
+pacman::p_load(tidyverse, here, broom, janitor, repurrrsive, jsonlite, rvest, devtools, nycflights13, AlignAssign)
+```
+
+# Vector Functions
+
+Functions that takeone or more vectors and return a vector result. 
+
+```{r}
+df <- tibble(
+  a = rnorm(5),
+  b = rnorm(5),
+  c = rnorm(5),
+  d = rnorm(5)
+)
+
+df
+
+df |> 
+  mutate(
+    a = (a - min(a, na.rm = TRUE)) / (max(a, na.rm = TRUE) - min(a, na.rm = TRUE)),
+    b = (b - min(b, na.rm = TRUE)) / (max(b, na.rm = TRUE) - min(a, na.rm = TRUE)), #if you copy and paste, you might not catch all the things you need to change
+    c = (c - min(c, na.rm = TRUE)) / (max(c, na.rm = TRUE) - min(c, na.rm = TRUE)),
+    d = (d - min(d, na.rm = TRUE)) / (max(d, na.rm = TRUE) - min(d, na.rm = TRUE)),
+  )
+
+```
+
+## Writing Functions
+
+You first need to figure out which part of your code is constant and which part varies. 
+
+So, if you pull apart the variable pieces you get:
+* variable = (variable - min(variable, na.rm = TRUE)) / (max(variable, na.rm = TRUE) - min(variable, na.rm = TRUE))
+
+To turn this into a function you need three things:
+1) A name
+2) The arguments
+3) The body
+
+Then you can create a function following the basic templates:
+
+` name <- function(arguments) {
+body
+}`
+
+For our toy example:
+
+```{r}
+
+rescale01 <- function(x) {
+  x = (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+}
+
+print(rescale01(c(-10, 0, 10)))
+print(rescale01(c(1, 2, 3, NA, 5)))
+```
+
+So now that we tested, let's return to our previous example:
+
+```{r}
+df |> 
+  mutate(
+    a = rescale01(a),
+    b = rescale01(b),
+    c = rescale01(c),
+    d = rescale01(d)
+  )
+
+# You can streamline this even more (and we will apparently learn this later with `across()`)
+df |> mutate(across(a:d, rescale01))
+```
+
+## Improving Our Function
+
+You might notice that we calculate the min and max and we could use range instead:
+
+```{r}
+rescale01 <- function(x) {
+  rng <- range(x, na.rm = TRUE)
+  (x - rng[1]) / (rng[2] - rng[1])
+}
+```
+
+Try it out:
+
+```{r}
+x <- c(1:10, Inf)
+
+print(rescale01(x))
+```
+
+Maybe that NaN is something we don't want, so we can request our function to ignore Inf.
+
+```{r}
+rescale01 <- function(x) {
+  rng <- range(x, na.rm = TRUE, finite = TRUE)
+  (x - rng[1]) / (rng[2] - rng[1])
+}
+
+rescale01(x)
+```
+
+*Because we have moved the repeated code into a function, we need only make a coding change in one place*
+
+## Mutate Functions
+
+These are functions that work well in mutate and filter because they return the same number of rows as the input. So, the following will show a series of examples that show the power of mutate functions:
+
+Transforming Z-score:
+
+```{r}
+z_score <- function(x) {
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
+
+x <- rnorm(10)
+
+z_score(x)
+```
+
+Or maybe you want to wrap a straightforward `case_when()` and give it a useful name:
+
+```{r}
+clamp <- function(x, min, max) {
+  case_when(
+    x < min ~ min,
+    x > max ~ max,
+    .default = x
+  )
+}
+
+clamp(1:10, min = 3, max = 7)
+```
+
+Maybe we need to make the first character of a list of strings uppercase:
+
+```{r}
+first_upper <- function(x) {
+  str_sub(x, 1, 1) <- str_to_upper(str_sub(x, 1, 1))
+  x
+}
+
+first_upper("hello")
+```
+
+Or maybe you want to strip %, $, and commas from a string before converting to a number:
+
+```{r}
+clean_number <- function(x) {
+  is_pct <- str_detect(x, "%")
+  num <- x |> 
+    str_remove_all("%") |> 
+    str_remove_all(",") |> 
+    str_remove_all(fixed("$")) |> 
+    as.numeric(x)
+  if_else(is_pct, num / 100, num)
+}
+
+clean_number("$12,456,567")
+clean_number("45%")
+```
+
+Sometimes you might have a very esoteric and specific function for a singular purpose. Let's say you have data for a project that codes all missing as 999, 998, or 997. 
+
+```{r}
+fix_na <- function(x) {
+  if_else(x %in% c(997, 998, 999), NA, x)
+}
+```
+
+We've focused on examples so far that take single vectors. But, there's no reason why you can't take multiple vector inputs:
+
+## Summary Functions
+
+Those functions that return a single value.
+
+```{r}
+commas <- function(x) {
+  str_flatten(x, collapse = ", ", last = " and ")
+}
+
+commas(c("cat", "dog", "pigeon"))
+```
+
+Or, you might want to wrap up a simple computation, like for the coefficient of variation, which divides the standard deviation by the mean:
+
+```{r}
+cv <- function(x, na.rm = FALSE) {
+  sd(x, na.rm = na.rm) / mean(x, na.rm = na.rm)
+}
+
+cv(runif(100, min = 0, max = 50))
+cv(runif(100, min = 0, max = 500))
+```
+
+Or maybe you want to simply make a common function easier to remember:
+
+```{r}
+n_missing <- function(x){
+  sum(is.na(x))
+}
+```
+
+You can also write functions with multiple vector inputs. Maybe you want to compute the mean absolute prediction error to help you compare model predictions with actual values:
+
+```{r}
+mape <- function(actual, predicted){
+  sum(abs((actual = predicted) / actual)) / length(actual)
+}
+```
+
+
+### Exercises
+
+#### 25.1a Practice turning the following code snippets into functions. Think about what each function does. What would you call it? How many arguments does it need?
+
+
+```{r}
+x <- c(1, 3, 4, NA, 5, 4, 3, 4, NA, 4, 3, 2, 1, 3, 4, 5, NA, 2, 3, 4)
+y <- c(2, 4, 5, 3, 2, 4, NA, 1, 4, 4, 2, 3, 4, 5, 3, 5, NA, 1, 2, 3)
+z <- c(2, 3, 4, 5, 3, 2, NA, 2, 4, 2, 4, 5, 3, 2, 3, 4, 2, 2, 3, NA)
+
+# Make these into functions
+
+mean(is.na(x))
+mean(is.na(y))
+mean(is.na(z))
+
+avg_missing <- function(value) {
+  mean(is.na(value))
+}
+
+avg_missing(x)
+
+# Make these into functions
+x / sum(x, na.rm = TRUE)
+y / sum(y, na.rm = TRUE)
+z / sum(z, na.rm = TRUE)
+
+prop_missing <- function(value, na.rm = TRUE) {
+  value / sum(value, na.rm = na.rm)
+}
+
+prop_missing(x)
+prop_missing(y)
+prop_missing(z)
+
+# Make these into functions
+round(x / sum(x, na.rm = TRUE) * 100, 1)
+round(y / sum(y, na.rm = TRUE) * 100, 1)
+round(z / sum(z, na.rm = TRUE) * 100, 1)
+
+perc_missing <- function(value, na.rm = TRUE) {
+  round(value / sum(value, na.rm = na.rm) * 100, 1)
+}
+
+perc_missing(x)
+perc_missing(y)
+perc_missing(z)
+
+```
+
+#### 25.2a IN the second variant of rescale01(), infinite values are left unchanged. Can you rewrite rescale01() so that -Inf is mapped to 0, and Inf is mapped to 1?
+
+```{r}
+x <- c(1:10,Inf, c(1:3), Inf, c(1:5), -Inf)
+
+glimpse(x)
+
+rescale01_mapInf <- function(x) {
+rng <- range(x, na.rm = TRUE, finite = TRUE) 
+x <- (x - rng[1]) / (rng[2] - rng[1])
+x[which(x == Inf)] <- 1
+x[which(x == -Inf)] <- 0
+return (x)
+}
+
+rescale01_mapInf(x)
+```
+
+#### 25.3 Given your vector of birthdays, write a function to compute age in years.
+
+```{r }
+birthdays <- c("1952-01-31", "1952-04-01", "2022-11-08", "1983-04-07", "1991-03-07")
+
+glimpse(birthdays)
+
+age_in_years <- function(x) {
+  y = round((Sys.Date() - as.Date(x)) / 365, 0)
+  
+  print(y)
+}
+
+age_in_years(birthdays)
+```
+
+#### 25.4 Write your own functions to compute variance and skewness of a numeric vector.
+
+```{r}
+x <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+my_variance <- function(x){
+  n = length(x)
+  mu <- mean(x, na.rm = TRUE)
+  sq_err <- (x - mu)^2
+  sum(sq_err) / (n - 1)
+}
+
+var(x)
+my_variance(x)
+
+skewness <- function(x, na.rm = FALSE) {
+  n <- length(x)
+  m <- mean(x, na.rm = na.rm)
+  v <- var(x, na.rm = na.rm)
+  (sum((x - m) ^ 3) / (n - 2)) / v ^ (3 / 2)
+}
+
+
+library(moments)
+moments::skewness(c(1, 2, 5, 100))
+skewness(c(1, 2, 5, 100))
+```
+
+
+#### 25.5 Write `both_na()` a function that takes two vectors and returns TRUE when the vectors have an NA in the same position.
+
+```{r}
+x <- c(1, 2, 3, 4, NA)
+y <- c(1, 2, 3, 4, NA)
+z <- c(1, NA, 3, 4, 5)
+q <- c(1, 2, 3, 4, 5)
+
+both_na <- function(vector1, vector2) {
+  sum(is.na(vector1) & is.na(vector2))
+}
+
+both_na(x, y)
+both_na(x, z)
+both_na(x, q)
+```
+
+#### 25.6 What about the short functions is_directory, and is_readable? Are they useful?
+
+Yes. If you don't have a familiarity with a repo they may tell you something about the file structure, although, it might be redundant. 
+
+```{r }
+is_directory <- function(x) file.info(x)$isdir
+is_readable <- function(x) file.access(x, 4) == 0
+```
+
+# Data Frame Functions
+
+Work like dplyr verbs: they take a data frame as the first argument and some extra arguments that say what to do with it and return a data frame or vector. Learn how to overcome indirection with {{}}.
+
+## Indirection and Tidy Evaluation
+
+Tidy evaluation works 95% of the time, specifically where you don't have to constantly reference a df every time you use a dplyr verb. However, this becomes a problem when you want to run a function on a data frame with multiple verbs in a pipeline. Here is an example problem with fake data to illustrate the issue:
+
+```{r }
+grouped_mean <- function(df, group_var, mean_var) {
+  df |> 
+    group_by(group_var) |> 
+    summarize(mean(mean_var))
+}
+
+# If we try and use this we get an error:
+#diamonds |> 
+#  grouped_mean(cut, carat)
+
+# To make is more simple, look at this fake data
+df <- tibble(
+  mean_var = 1,
+  group_var = "g",
+  group = 1,
+  x = 10, 
+  y = 100
+)
+
+df |>  grouped_mean(group, x)
+df |>  grouped_mean(group, y)
+```
+
+What you see from the last two is regardless of how we call `groupd_mean()` it always does `df |>  group_by(group_var) |> summarize(mean(mean_var))`, instead of `df |> group_by(group) |> summarize(mean(x))` or whatever. _This is a problem of indirection_. To avoid this we an use _embracing_ {{}}. 
+
+```{r }
+grouped_mean <- function(df, group_var, mean_var){
+  df |> 
+    group_by({{ group_var }}) |> 
+    summarize(mean({{ mean_var }}))
+}
+
+df |> 
+  grouped_mean(group, x)
+```
+
+## When to embrace?
+
+The challenge with dataframe functions is to figure out which arguments need to be embraced. There are two most common subtypes of tidy evaluation:
+
+*Data Masking* is used in functions such as arrange(), filter(), and summarize() that compute with variables. 
+*Tidy Selection* is used for functions such as select(), relocate(), and rename() that select variables. 
+
+Essentially, can you compute x + 1 or select a:x? Here is an example that always works with the flights dataset to show you the point. 
+
+```{r }
+subset_flights <- function(rows, cols){
+  flights |> 
+    filter({{ rows }}) |> 
+    select(time_hour, carrier, flight, {{ cols }})
+}
+```
+
+## Data Masking Versus Tidy Selection
+
+So, you might want to count missing by rows, your intuition would be to do this:
+
+```{r }
+count_missing <- function(df, group_vars, x_var){
+  df |> 
+    group_by({{ group_vars }}) |> 
+    summarize(
+      n_miss = sum(is.na({{ x_var }})),
+      .groups = "drop"
+    )
+}
+
+# But, this won't work
+#flights |> 
+#  count_missing(c(year, month, day), dep_time)
+
+```
+
+This doesn't work because group_by uses data masking, not tidy selection. We can work around this by using pick() function which enables working around a data masking issue and turns it into a tidy selection (these names don't make any sense)
+
+```{r }
+count_missing <- function(df, group_vars, x_var){
+  df |> 
+    group_by(pick({{ group_vars }})) |> 
+    summarize(
+      n_miss = sum(is.na({{ x_var }})),
+      .groups = "drop"
+    )
+}
+
+flights |> 
+  count_missing(c(year, month, day), dep_time)
+
+```
+
+You can also use pick() to create a 2D table of counts:
+
+```{r }
+count_wide <- function(data, rows, cols){
+  data |> 
+    count(pick(c({{ rows }}, {{ cols }}))) |> 
+    pivot_wider(
+      names_from = {{ cols }},
+      values_from = n,
+      names_sort = TRUE,
+      values_fill = 0
+    )
+}
+
+diamonds |> 
+  count_wide(c(clarity, color), cut)
+```
+
+Much of this discussion requries some further study with the coding that builds tidyr and dplyr, so you should go there next. 
+
+### Exercises
+
+#### 25.1b Using the datasets from nycflights13, write a function that:
+
+a) Finds all the flights that were cancelled (i.e., is.na(arr_time)) or delayed by more than an hour:
+
+```{r }
+
+filter_severe <- function(data, arrival_issue, departure_issue){
+  data |> 
+    filter(arrival_issue(arr_time) | dep_delay > departure_issue) 
+}
+
+flights |> 
+  filter_severe(is.na, 60)
+
+```
+
+b) Counts the number of cancelled flights and the number of flights delayed by more than an hour:
+
+```{r }
+
+summarize_severe <- function(data, group_var){
+  data |> 
+    group_by({{ group_var }}) |> 
+    filter_severe(is.na, 60) |> 
+    summarize(
+      count = n()
+    )
+}
+
+flights |> 
+  summarize_severe(dest)
+
+```
+
+c) Find all the flights that were cancelled or delayed more than a user_supplied number of hours
+
+```{r }
+filter_severe <- function(hours){
+  flights |> 
+  filter(is.na(arr_time) | dep_delay > hours)
+}
+
+filter_severe(2)
+
+```
+d) Summarize the weather to compute the minimum, mean and maximum of a user-supplied variable:
+
+```{r }
+
+summarize_weather <- function(data, variable){
+  data |> 
+    summarize(
+      mean = mean(temp, na.rm = TRUE),
+      min = min(temp, na.rm = TRUE),
+      max = max(temp, na.rm = TRUE)
+    ) |> 
+    round(2)
+}
+
+weather |> 
+  summarize_weather(temp)
+```
+
+e) Converts the user-supplied variable that uses clock time (e.g., dep_time, arr_time) into a decimal time (i.e., hours + [minutes/60])
+
+```{r }
+standardized_time <- function(data, variable){
+data |> 
+  mutate(
+    dep_time_2 = make_datetime(year, month, day, hour, minute, {{ variable }}),
+    standardized_time = hour(dep_time_2) + minute(dep_time_2) / 60) 
+}
+
+flights |> 
+  standardized_time(air_time)
+```
+
+#### 25.2b For the following, list all elements that use tidy evaluation and describe whether they use data masking or tidy selection:
+
+* `distinct()` data masking
+* `count()` data masking
+* `group_by()` both? unknown
+* `rename_with()` tidy selection
+* `slice_min()` data masking
+* `slice_sample()`data masking
+
+#### 25.3b Genearlize the following function so that you can supply any number of variables to count:
+
+```{r }
+count_prop <- function(df, var, sort = FALSE){
+  df |> 
+    count({{ var }}, sort = sort) |> 
+    mutate(prop = n / sum(n))
+}
+
+df
+
+```
+ 
+ 
+# Plot Functions
+
+Let's say you need to make a lot of histograms. Easy. `aes()` is a data masking function.
+
+```{r }
+histogram <- function(data, var, binwidth = NULL){
+  data |> 
+    ggplot(aes(x = {{ var }})) +
+    geom_histogram(binwidth = binwidth) 
+}
+
+# See our function in action
+diamonds |> 
+  histogram(carat, 0.1)
+
+# Now see it's utility
+diamonds |> 
+  histogram(carat, 0.1) +
+  labs(x = "Size (in carats)", y = "Number of Diamonds")
+```
+
+## More Variables
+
+It's easy to add more variables. Let's say you want to add a linearity check:
+
+```{r }
+linearity_check <- function(df, x, y){
+  df |> 
+    ggplot(aes(x = {{ x }}, y = {{ y }})) +
+    geom_point() +
+    geom_smooth(method = "loess", formula = y ~ x, color = "firebrick2", se = FALSE) +
+    geom_smooth(method = "lm", formulat = y ~ x, color = "darkgrey", se = FALSE)
+}
+
+starwars |> 
+  filter(mass < 1000) |> 
+  linearity_check(mass, height)
+
+```
+
+Or maybe you might want alternative to colored scatterplots for very large datasets where overplotting is a problem:
+
+```{r }
+hex_plot <- function(df, x, y, z, bins = 20, fun = "mean"){
+  df |> 
+  ggplot(aes(x = {{ x }}, y = {{ y }}, z = {{ z }})) +
+    stat_summary_hex(
+      aes(color = after_scale(fill)), #makes the border the same color as fill
+      bins = bins,
+      fun = fun
+    )
+}
+
+diamonds |> 
+  hex_plot(carat, price, depth)
+
+```
+
+# Combining with other tidyverse packages
+
+You might want to sort a vertical bar chart automatically for the frequency order, but in reverse. In this instance we also see a new operator `:=` which tells tidyverse to treat = as = but normally wouldn't work because nothing gets evaluated to the left of a `=` in base r. 
+
+```{r }
+sorted_bars <- function(df, var){
+  df |> 
+    mutate({{ var }}:= fct_rev(fct_infreq({{  var }}))) |> 
+    ggplot(aes(y = {{ var }})) +
+    geom_bar()
+  
+}
+
+diamonds |>  sorted_bars(clarity)
+
+```
+
+Or maybe you just want to make it easy to draw a bar plot for simple subset of data:
+
+```{r }
+conditional_bars <- function(df, condition, var){
+  df |> 
+    filter({{condition }}) |> 
+    ggplot(aes(x = {{ var }})) +
+    geom_bar()
+}
+
+diamonds |> 
+  conditional_bars(cut == "Good", clarity)
+```
+
+The sky is the limit. The following is a much more complicated case: labeling your plots. 
+
+```{r }
+histogram <- function(df, var, binwidth = NULL){
+  label <- rlang::englue("A Histogram of {{ var }} with binwidth {binwidth}")
+  
+  df |> 
+    ggplot(aes(x = {{ var }})) +
+    geom_histogram(binwidth = binwidth) +
+    labs(title = label)
+}
+
+diamonds |> 
+  histogram(carat, 0.1)
+
+```
+
+
+#### Exercises
+
+### 25.1c Make a scatterplot function with all we learned.
+
+```{r }
+scatterplop <- function(df, var1, var2){
+  label <- rlang::englue("A Scatterplot of {{ var1 }} and {{ var2}}")
+  
+  df |> 
+    ggplot(aes(x = {{ var1 }}, y = {{ var2 }})) +
+    geom_point() +
+    geom_smooth(method = "loess", formula = y ~ x, color = "firebrick2", se = FALSE) +
+    geom_smooth(method = "lm", formulat = y ~ x, color = "darkgrey", se = FALSE) +
+    labs(title = label)
+}
+
+mtcars |> 
+  scatterplop(mpg, cyl)
+
+```

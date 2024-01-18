@@ -1,0 +1,708 @@
+---
+title: "r4ds_ch17_dates_and_times"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+Dates and times are super complicated, especially as you deal with default formats across different software packages. I'm looking at you excel. 
+
+# Prerequisites
+
+```{r}
+# Packages you will need
+pacman::p_load(tidyverse, nycflights13)
+```
+
+# Creating Dates/Times
+
+There are three different types of date/time data:
+* _Date_, tibbles print this as <date>
+* _Time_, within a day, tibbles print this as <time>
+* _Date-Time- is a date plus time: it uniquely identifies an instant in time, tibbles print this as <dttm>, base R calls this POSIXct, which isn't easy to say.
+
+In general, you should use the simplest format that you need. So if you need a date but not date-time, then do so. Because date-times require a base/comparison timezone information. Also, base R doesn't have an intuitive way of storing time (so this chapter won't be dealing with that), if you NEED that then download the `hms` package. 
+
+```{r}
+today()
+
+now()
+```
+
+We next talk through the four ways that you are most likely going to be dealing with date/date-time data.
+
+## During Import
+
+If your csv contains an ISO8601 date or date-time, you don't need to do anything readr will automatically recognize it (fat chance that's the case though)
+
+```{r}
+
+csv <- "
+  date,datetime
+  2022-01-02,2022-01-02 05:12
+"
+
+csv
+
+read_csv(csv)
+```
+
+_ISO8601_ is an internationally recognized and standardized way of storing dates from biggest to smallest where the time is separated from the date by either a space or `T`. So May 16, 2023 4:15PM would like this: `2022-05-16T16:15` or `2022-05-16 16:15`.
+
+If your date or date-times are in any other format you will need to use `col_types()`, `col_dates()`, and or `col_datetime()` along with a date-time format. `readr` uses the standard `%Y-%m-%d` format. The format options are as follows:
+
+* `%Y` - 2022
+* `%y` - 22
+* `%m` - 2
+* `%b` - Feb
+* `%B` - February
+* `%d` - 02
+* `%e` - 2
+* `%H` - 16
+* `%I` - 4
+* `%p` - pm or am
+* `%M` - 35
+* `%S` - 45
+* `%OS` - 45.35
+* `%Z` - America/Chicago
+* `%z` - +0800 (offset from UTC)
+* `%.` - skip one nondigit `:`
+* `%*` - skip any number of digits
+
+The following shows the code with very ambiguous data. 
+
+```{r}
+
+csv <- "
+  date
+  01/02/15
+"
+
+csv
+
+# the following is an illustration of the coding flexibility, but who knows with the above.
+read_csv(csv, col_types = cols(date = col_date("%m/%d/%y")))
+read_csv(csv, col_types = cols(date = col_date("%d/%m/%y")))
+read_csv(csv, col_types = cols(date = col_date("%y/%m/%d")))
+```
+
+If you're using non English month names and abbreviations, then you will need to specify a local `date_names_langs()` or create a vector of names `date_names()`
+
+## From Strings
+
+Lubridate has "helpers" that automatically attempt to determine the format of the date from strings. To use them, identify the order in which year, month, and day appear in your dates; then arrange "y", "m", and "d" in the same order. 
+
+```{r}
+ymd("2022-11-08")
+mdy("November 8, 2022")
+dmy("08-11-2022")
+```
+
+`dmy` friends make dates, you'll need an underscore for adding a date-time e.g., `dmy_hms`
+
+```{r}
+ymd_hms ("2022-11-08_08:26:00")
+mdy_hm("November 8, 2022 8:26")
+```
+
+You can also force the creation of a date-time from a date by supplying a time zone: 
+* `OlsonNames()` is useful when dealing with timezones. 
+* UTC, is synonymous with GMT or Greenwhich Mean Time at 0degrees longitude and doesn't use daylight savings (so easier to compute with)
+
+```{r}
+ymd_hm("2022-11-08 8:26", tz = "America/Los_Angeles")
+```
+
+## From Individual Components
+
+Sometimes the dates will be spread out across columns in a csv, like we have in the flights dataset. 
+
+```{r}
+flights |> 
+  select(year, month, day, hour, minute) 
+
+```
+
+TO make a date, you can use `make_date()` or `make_datetime()`
+
+```{r}
+flights |> 
+  select(year, month, day, hour, minute) |> 
+  mutate(departure = make_datetime(year, month, day, hour, minute))
+
+```
+
+You can do the same thing with the dates and times in flights, that are actually in a weird format. 
+
+```{r}
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day , time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |> 
+  filter(!is.na(dep_time), !is.na(arr_time)) |> 
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |> 
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt
+```
+
+With this data we can visualize the distribtuion of departure times across the year:
+
+```{r}
+flights_dt |> 
+  ggplot(aes(x = dep_time)) +
+  geom_freqpoly(binwidth = 86400)
+
+```
+
+Or within a single day:
+
+```{r}
+flights_dt |> 
+  filter(dep_time < ymd(20130102)) |> 
+  ggplot(aes(x = dep_time)) +
+  geom_freqpoly(binwidth = 600)
+
+```
+
+## From Other Types
+
+You may want to switch between a date-time and date, and this is the job for `as_datetime()` and `as_date()`
+
+```{r}
+as_datetime(today())
+as_date(now())
+```
+
+Sometimes you will get dates and times with offsets from the UNIX epoch (1970-01-01) and you will need to use `as_datetime()` and `as_date()` respectively to adjust 
+
+```{r}
+as_datetime(60 * 60 * 10) # UNIX EPOCH
+
+as_date(365 * 13 + 99) # My birthday in reference to UNIX Epoch
+```
+
+#### Exercises
+
+### 17.1a What happens if you parse a string that contains invalid dates? 
+
+_Answer_ R warns you that something failed to parse. 
+```{r}
+#ymd(c("2010-10-10", "bananas"))
+```
+
+### 17.2a What does the `tzone` argument to `today()` do? Why is it important? 
+
+_Answer_ it specifies the timezone your local computer is in. You should do that and know that if you're looking at time sensitive data.
+```{r}
+today(tz = "America/Los_Angeles")
+```
+
+### 17.3a For each of the following date-times, show how you'd parse it using `readr` column specification and lubridate functions:
+
+```{r}
+d1 <- "January 1, 2010"
+d2 <- "2015-Mar-07"
+d3 <- "06-Jun-2017"
+d4 <- c("August 19 (2015)", "July 1 (2015")
+t1 <- "1705"
+t2 <- "11:15:10.12 PM"
+
+mdy(d1)
+ymd(d2)
+dmy(d3)
+mdy(d4)
+parse_time(t1, "%H%M")
+parse_time(t2, "%h:%M:%OS %p")
+
+```
+
+# Date-Time Components
+
+There are also accessor functions that let you get and set individual components. We learn about those here. 
+
+## Getting Components
+
+You can pull out individual parts of the date and time with `year()`, `month()`, `mday()`, `yday()`, `wday()`, `hour()`, `minute()` and `second()`
+Effectively these are the opposite of `maked_datetime()`
+
+```{r}
+datetime <- ymd_hms("2022-11-08_082626")
+datetime
+
+year(datetime)
+month(datetime, label = TRUE)
+mday(datetime)
+wday(datetime, label = TRUE)
+yday(datetime)
+hour(datetime)
+minute(datetime)
+second(datetime)
+```
+
+We can use `wday()` to see that more flights depart during the week than on the weekend. 
+
+```{r}
+flights_dt |> 
+  mutate(wday = wday(dep_time, label = TRUE)) |> 
+  ggplot(aes(x = wday)) +
+  geom_bar()
+
+```
+
+We can also look at the average departure day by minute within the hour. 
+
+```{r}
+flights_dt |> 
+  mutate(minute = minute(dep_time)) |> 
+  group_by(minute) |> 
+  summarize(
+    avg_delay = mean(dep_delay, na.rm = TRUE),
+    n = n()
+  ) |> 
+  ggplot(aes(x = minute, y = avg_delay)) +
+  geom_line()
+
+```
+
+If we look at scheduled departure time, we don't see the same pattern of 20-30 and 50-60 minute dips. 
+
+```{r}
+flights_dt |> 
+  mutate(minute = minute(sched_dep_time)) |> 
+  group_by(minute) |> 
+  summarize(
+    avg_delay = mean(arr_delay, na.rm = TRUE),
+    n = n()
+  ) |> 
+  ggplot(aes(x = minute, y = avg_delay)) +
+  geom_line()
+
+```
+
+If you looked closely you could see that many flights are scheduled to depart at nice multiples of 5 or round milestone numbers like 10, 20, etc. This is a good lesson in any data that is derived by human cognition that will have bias in the data generating process. You could say something causal from this but would need to account for that bias in the data generation process. 
+
+## Rounding
+
+You can also round the date to a nearby unit of time with `floor_date`, `round_date`, and `ceiling_date()` functions. Below we see how rounding to the week could show us the busy holiday travel weeks. 
+
+```{r}
+flights_dt |> 
+  count(week = floor_date(dep_time, "week")) |> 
+  ggplot(aes(x = week, y = n)) +
+  geom_line() +
+  geom_point()
+
+```
+
+You can also use rounding to show the course of flights across a day.
+
+```{r}
+flights_dt |> 
+  mutate(dep_hour = dep_time - floor_date(dep_time, "day")) |> 
+  ggplot(aes(x = dep_hour)) +
+  geom_freqpoly(binwidth = 60 * 30)
+
+```
+
+You can also visualize differences in time by computing the difference between datetimes. 
+
+
+```{r}
+flights_dt |>
+  mutate(dep_hour = hms::as_hms(dep_time - floor_date(dep_time, "day"))) |> 
+  ggplot(aes(x = dep_hour)) +
+  geom_freqpoly(binwidth = 60 * 30)
+```
+
+## Modifying Components
+
+While this shouldn't come up too often in analysis, it might be an issue if you know there are errors when you're cleaning the data. 
+
+```{r}
+(datetime <- ymd_hms("2022-11-08 08:26:26"))
+
+year(datetime) <- 2023
+month(datetime) <- 5
+hour(datetime) <- 14
+
+datetime
+```
+
+Alternatively, you can `update()` multiple values in the same step:
+
+```{r}
+update(datetime, year = 2040, month = 11, mday = 8, hour = 12)
+
+```
+
+And, if values are too big, they will rollover
+
+```{r}
+update(ymd("2023-02-01"), mday = 30)
+```
+
+#### Exercises
+
+### 17.1b How does the distribution of flight times within a day change over the course of a year?
+
+```{r}
+flights_dt |>
+  mutate(dep_hour = hms::as_hms(dep_time - floor_date(dep_time, "day"))) |> 
+  ggplot(aes(x = dep_hour)) +
+  geom_freqpoly(binwidth = 60 * 30) +
+  facet_wrap(~month(dep_time))
+```
+
+### 17.2b Compare dep_time, sched_dep_time, and dep_delay. Are they consistent? Explain your findings? 
+
+# My plan is to look at all three lines in a single plot...
+
+_Answer_ They appear to be consistent just off by a few seconds? 
+
+```{r}
+flights_dt |>
+  mutate(dep_hour = hms::as_hms(dep_time - floor_date(dep_time, "day")),
+         sched_dep_hour = hms::as_hms(sched_dep_time - floor_date(sched_dep_time, "day")),
+         delay = hms::as_hms(dep_hour - sched_dep_hour),
+         diff = delay - dep_delay,
+         .keep = "used") 
+```
+### 17.3b Compare air_time with the duration between the departure and arrival. Explain your findings (hint: consider location of airport)
+
+
+_ANSWER_ So there are two issues here. 1) air time as they give and the air_time we calculate will be different because departures and arrivals count the time gate to gate, so will have the taxi time built in. You can see that average for the flights that are on the east coast ~15-20m. But when you look at the flights to the west coast you add a lot of minutes which is the time zone jumps. 
+```{r}
+flights_dt |> 
+  mutate(air_time_calc = arr_time - dep_time,
+         air_time_diff = air_time_calc - air_time)
+```
+
+### 17.4b How does the average delay change over the course of a day? Shcoule you use dep_time or sched_dep_time? Why?
+
+
+_Answer_ You should used scheduled departure time. Because the actual departure time might be the next day artificially inflating the amount of avg delay. 
+```{r}
+flights_dt |> 
+  mutate(hour = hms::as_hms(floor_date(sched_dep_time, "hour"))) |> 
+  group_by(hour) |> 
+  summarize(
+    avg_delay = mean(dep_delay, na.rm = TRUE),
+    n = n()
+  ) |> 
+  ggplot(aes(x = hour, y = avg_delay)) +
+  geom_line()
+
+```
+
+### 17.5b On what day of the week should you leave if you want to minimize the chance of a delay?
+
+_Answer_ Saturday, leaving FROM NYC airports, which isn't really helpful unless you live in NYC.
+
+```{r}
+flights_dt |>
+  mutate(dep_day = wday(sched_dep_time, label = TRUE)) |> 
+  group_by(dep_day) |> 
+  summarize(
+    avg_delay = mean(dep_delay, na.rm = TRUE),
+    n = n()
+  ) |> 
+  ggplot(aes(x = dep_day, y = avg_delay)) +
+  geom_col()
+```
+
+### 17.6b What makes the distribution of diamonds$carat and flights$sched_dep_time similar?
+
+_ANSWER_ I could have made the binwidth more illuminating here, but both are documented and created by humans, so both tend to artificially group on round numbers or meaningful milestones. 
+
+```{r}
+ggplot(data = diamonds, aes(x = carat)) +
+  geom_histogram(binwidth = .05)
+
+ggplot(data = flights, aes(x = sched_dep_time)) +
+  geom_histogram(binwidth = 30)
+```
+
+### 17.7b Confirm our hypothesis that the early departures of flights in minutes 20-30 and 50-60 are caused by scheduled flights that leave early. Hint: create a binary variable that tells you whether a flight was delayed. 
+
+
+```{r}
+flights_dt |> 
+  mutate(
+    minute = minute(dep_time),
+    early = ifelse(dep_delay >= 0, FALSE, TRUE),
+    min_group = case_when(
+      minute <= 19 ~ '0-20',
+      minute >= 20 & minute <= 30 ~ '20-30',
+      minute >= 31 & minute <= 49 ~ '31-49',
+      minute >= 50 & minute <= 60 ~ '50-60'
+    )
+  ) |> 
+  group_by(min_group) |> 
+  summarize(
+    avg_delay = mean(arr_delay, na.rm = TRUE),
+    sum_early_flights = sum(early),
+    n = n()
+  )
+
+```
+
+# Time Spans
+
+How does arithmetic with dates work? Specifically, how do we calculate _duration_, _periods_, and _intervals_. 
+
+## Durations
+
+When you subtract two date_times in r you get a `difftime` object
+
+```{r}
+# How old is Andrew
+a_age <- today() - ymd("1983-04-07") # not the most intuitive way we talk about time, as days
+
+as.duration(a_age)
+
+```
+
+Durations come with a bunch of convenient constructions:
+
+```{r}
+dseconds(156)
+dminutes(10)
+dhours(c(12, 24))
+ddays(0:7)
+dweeks(7)
+dyears(1)
+```
+
+Durations always record the time in seconds. So you can convert by 60 seconds in a minute, 60 minutes in an hour, 24 hours in a day, 7 days in a week. There is no way to do this for months since February and the other variable months. 
+
+```{r}
+2 * dyears(1)
+
+dyears(4) + dyears(2) + dyears(6)
+```
+
+You can add and subtract durations to and from days:
+
+```{r}
+tomorrow <- today() + ddays(1)
+last_year <- today() - dyears(1)
+
+tomorrow
+last_year
+```
+
+However, and be warned, because durations are in the exact seconds, you might get whonky results unexpectedly. 
+
+```{r}
+one_am <- ymd_hms("2026-03-08 01:00:00", tz = "America/Los_Angeles") #DST comes in to get you here. 
+
+one_am
+
+one_am + ddays(1)
+```
+
+## Periods
+
+To solve the problem above (calculating in exact seconds that neglects the human conventions of daylight savings), lubridate provides periods. Periods work in "human times"
+
+```{r}
+one_am
+
+one_am + days(1) # this doesn't add 1 hour as well as ddays() did above
+```
+
+Similar to durations, periods can be formed with various constructive helpers:
+
+```{r}
+hours(c(12, 24))
+days(7)
+months(1:6)
+weeks(1:5)
+years(40)
+```
+
+You can add and multiply periods:
+
+```{r}
+10 * (months(6) + days(1))
+
+days(50) + hours(25) + minutes(2)
+```
+
+And, of course, add them to dates. Compared with durations, periods are more likely more often to do what you expect or want them to do.
+
+```{r}
+# a leap year
+ymd("2024-01-01") + dyears(1)
+ymd("2024-01-01") + years(1)
+
+# Daylight savings time
+one_am + ddays(1)
+one_am + days(1)
+```
+
+Let's use periods to fix an abnormaly in the NYC flights data. Specifically, let's resolve why some flights appear to arrive before they left.
+
+```{r}
+flights_dt |> 
+  filter(arr_time < dep_time)
+
+```
+
+These are all overnight flights, so we can fix this by adding days(1)
+
+```{r}
+flights_dt  <- flights_dt |> 
+  mutate(
+    overnight = arr_time < dep_time,
+    arr_time = arr_time + days(overnight),
+    sched_arr_time = sched_arr_time + days(overnight)
+  )
+
+
+```
+
+Now the flights obey the laws of physics:
+
+```{r}
+flights_dt |> 
+  filter(arr_time < dep_time)
+
+```
+
+
+## Intervals
+
+What days dyears(1) / ddays(365) return? What about years(1) / days(1) return? The issue here is the average number of days in the first example 365.25, while the second would be 365 most years, but 366 every 4 years. 
+
+Here, we introduce intervals. You can create an interval by writing a start `%- -%` end: 
+
+```{r}
+y2023 <- ymd("2023-01-01") %--% ymd("2024-01-01")
+y2024 <- ymd("2024-01-01") %--% ymd("2025-01-01")
+
+y2023
+y2024
+```
+
+Now you can divide it by days to get what you expect:
+
+```{r}
+y2023 / days(1)
+y2024 / days(1)
+```
+
+#### Exercises
+
+### 17.1c Explains days(!overnight) and days(overnight) to someone who has just started learning R. What is the key fact that you need to know? 
+
+_Answer_ Overnight is an R object that we created to identify all the flights that arrived _before_ they took off. This is because these flights traveled overnight. The way that R stored these objects is a datetimes() and so they calculated this as a duration in seconds, and as such, lost the information that a day had passed. To do this, we identified all the flights that traveled overnight, and added a period of days(1) to them to ensure that the difference from arrival time and departure time accounted for the turnover of the day. 
+
+
+### 17.2c Create a vector of dates giving the first day of every month in 2015. Create a vecotr of dates giving the first day of every month in the current year. 
+
+```{r}
+ymd("2015-01-01") + months(0:11)
+
+ymd("2023-01-01") + months(0:11)
+```
+
+### 17.3c Write a function that, given your birthday (as a date), returns how old you are in years?
+
+```{r}
+age_in_years <- function(bday) {
+  (ymd(bday) %--% today() %/% years(1))
+}
+
+age_in_years("1983-04-07")
+```
+
+### Why can't (today() %--% (today() + years(1))) / months(1) work? 
+
+_Answer_ While the code will give you an output, it isn't what you want. The reason is the interval is calculated as a duration in seconds and a month is a period of human convention and as such, will have some variability. 
+
+```{r}
+(today() %--% (today() + years(1))) / months(12)
+
+# so instead you should use (not clear to me why?)
+(today() %--% (today() + years(1))) %/% months(1)
+
+```
+
+# Time Zones
+
+Time zones are very complicated as they interact with geopolitical entities. You can probably focus a lot of time on this, but no need unless you're analysis requires it. 
+
+So, problem one is Eastern Standard Time zones exist in Australia, and Canada, that don't align. So r uses `IANA` time zones which include `{continent}/{city}` for specificity or `{ocean}/{city}`
+
+The reason why it's not country is because countries aren't as stable as cities. A great example is "America/Detroit" which is an EST but didn't always follow DST and needed it's own category. It does now.
+
+```{r}
+Sys.timezone()
+
+length(OlsonNames())
+head(OlsonNames())
+```
+
+In R, the time zone is only worried about printing. So these following times represent the exact same times. 
+
+```{r}
+x1 <- ymd_hms("2024-06-01 12:00:00", tz = "America/New_York")
+x2 <- ymd_hms("2024-06-01 18:00:00", tz = "Europe/Copenhagen")
+x3 <- ymd_hms("2024-06-02 04:00:00", tz = "Pacific/Auckland")
+
+x1
+x2
+x3
+
+
+# verify there is a diff of 0 seconds
+x1 - x2
+x1 - x3
+x2 - x3
+```
+
+Unless otherwise specified, lubridate will use UTC. Often operations using c will drop the time_zone and thus only the first item will be retained. 
+
+```{r}
+x4 <- c(x1, x2, x3)
+x4
+```
+
+You can change the time zones in two ways: 
+
+1) Keep the instant time zone the same, and change how it's displayed. Use this when the instant is correct but you want a more natural display
+
+```{r}
+x4a <- with_tz(x4, tzone = "Australia/Lord_Howe")
+x4a
+x4a - x4
+```
+
+2) Change the underlying instant in time. Use this when you have an instant that has been labeled with the incorrect time zone and you need to fix it. 
+
+```{r}
+x4b <- force_tz(x4, tzone = "Australia/Lord_Howe")
+x4b
+x4b - x4 # difference in hours
+
+```
+
+# Summary
+
+While you might not work with data that crosses a time zone, when you write a function you should prepare for it to account for some of the complexities of time. 

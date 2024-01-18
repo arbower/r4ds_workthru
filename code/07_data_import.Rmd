@@ -1,0 +1,321 @@
+---
+title: "r4ds_ch7_data_import"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+The basics about reading data from files INTO R. This is like 84% of the fight of a data scientist. 
+
+# Pre-requisites
+
+`library(tidyverse)`
+
+# Reading Data from a File
+
+Let's start with the CSV. Let's read the *students.csv* file from the url
+
+```{r}
+library(tidyverse)
+students <- read_csv("https://pos.it/r4ds-students-csv")
+
+students
+```
+
+## Practical Advice
+
+Once you read in the csv file, your first step usually involves transforming it in some way to make it easier to work with. Note, that how we read the csv we inherited a file with a N/A that R thinks is a meaningful character value, rather than an NA for missing or omitted value. So, how can we specify this on import?
+
+```{r}
+students <- read_csv("https://pos.it/r4ds-students-csv", na = c("N/A", ""))
+
+students # now we have NAs that R knows are missing values
+```
+
+You may also notice the that *Student ID* and *Full Name* columns have spaces. Let's fix that. 
+
+```{r}
+students <- students |> 
+  rename(
+    student_id = 'Student ID',
+    full_name = 'Full Name'
+  )
+
+students
+```
+
+You can also use `janitor::clean_names()` with some of it's special arguments to do the work for you (at least with common issues). You should also consider variable types, and any typos within values. 
+
+```{r}
+students <- students |> 
+  janitor::clean_names() |> 
+  mutate(
+    mean_plan = factor(meal_plan),
+    age = parse_number(if_else(age == "five", "5", age))
+  )
+
+students # cleaned
+```
+
+## Other Arguments
+
+You can use `read_csv()` to read lines of code directly into R to make it look like a csv. Here we are making up data, but you can use any of these arguments to help you fix 99% of the issues you will have with CSV files. 
+
+```{r}
+# using this to motivate an example
+read_csv(
+  "a,b,c 
+  1,2,3
+  4,5,6"
+)
+
+# you can use it to skip meta data like large excel files from junior analysts
+read_csv(
+  "The first line of metadata
+  The second line of metadata
+  x,y,z
+  1,2,3",
+  skip = 2
+)
+
+# you can use it to skip meta data like large excel files from junior analysts that have some conventions for comments
+read_csv(
+  "@ Don't mess with this file!
+  x,y,z
+  1,2,3",
+  comment = "@" 
+)
+
+# and in some situations you may not have column names, so use the 'col_names()' function
+read_csv(
+  "x,y,z
+  1,2,3",
+  col_names = FALSE 
+)
+
+# and in some situations you may not have column names, so use the 'col_names()' function, and if you know the names of the columns
+read_csv(
+  "x,y,z
+  1,2,3",
+  col_names = c("A", "B", "C")
+)
+```
+
+## Other types of files
+
+* `read_csv2()` reads semicolon-separated files. These use ; instead of , to separate fields and are common in countries that use , as the decimal marker
+* `read_tsv()` reads tab-delimited files
+* `read_delim()` reads in files with any delimiter, attempting to automatically guess the delimiter if you don't specify it
+* `read_fwf()` reads fixed_width files. You can specify fields by their widths with fwf_widths() or by their positions fwf_positions()
+* `read_table()` reads a common variation of fixed-width files where columns are separated by white space
+* `read_log()` reads Apache-style log files
+
+### Exercises
+
+#### 07.1: What function would you use to read a file where fields were separated with '|'?
+
+*Answer* I would use `read_delim()`
+
+```{r}
+# and I would be correct
+read_delim(
+  "1|2|3
+  4|5|6
+  x|y|z"
+)
+```
+
+#### 07.2: Apart from file, skip and comment, what other arguments do read_csv() and read_tsv() have in common? 
+
+*Answer* Plenty. 
+
+#### 07.3: What are the most important arguments to read_fwf()?
+
+*Answer* file, col_positions, col_types, col_select
+
+### 07.4: Sometimes strings in a CSV contain commas. How can we read `x,y\n1, 'a,b'` with read_csv?
+
+*Answer* I have no idea, this reads in as expected? 
+
+```{r}
+read_csv("x,y\n1,'a,b'", quote = "'") # but this is not actually true, I get the same with the default
+```
+#### 07.5: What's wrong with the following CSV files, what happens when you run them? 
+
+```{r}
+read_csv("a,b\n1,2,3\n4,5,6") # the header only has two columns, and it looks like there are three expected. So you join two numbers. 
+read_csv("a,b,c\n1,2\n1,2,3,4") # unequal number of rows and columns, in sufficient elements in the second row
+read_csv("a,b\n\"1") # unclear where the "1" value will be, so ambiguous. 
+read_csv("a,b\n1,2\n1,b") # if the b is indeed a true value, then it should be "'" quoted with some symbol. Although, it worked as expected. 
+read_csv("a;b\n1;3") # this isn't a comma separated value, but a semi-colon separate value file. 
+```
+
+#### 07.6: Practice referring to nonsyntactic names in the following data frame by: 
+a. Extracting the variable called 1
+b. Plotting a scatterplot of 1 vs 2
+c. Creating a new column called 3, which is 2 divided by 1
+d. Renaming the columns to one, two, and three:
+
+```{r}
+annoying <- tibble(
+  `1` = 1:10,
+  `2` = `1` * 2 + rnorm(length(`1`))
+)
+
+# extract 1
+annoying |> 
+  select(`1`)
+
+# plot 1 vs 2
+annoying |> 
+  ggplot(aes(x = `1`, y = `2`)) +
+  geom_point()
+
+# create a new column called `3`
+annoying |> 
+  mutate(
+    `3` = `2` / `1`
+  ) |> 
+  rename(
+    one = `1`,
+    two = `2`,
+    three = `3`
+  )
+```
+
+# Controlling Column Types
+
+CSV files do not contain information about the variable/column type. So whether you're dealing with a factor, a categorical/nominal, or number. 
+
+## Guessing types
+
+*readr* does this by sampling with 1000 rows from your data following some built in heuristics (e.g., is there a T, F, TRUE, FALSE at all?)
+
+```{r}
+# watch and see how it works
+
+read_csv("
+         logical,numeric,date,string
+         TRUE,1,2021-01-15,abc
+         false,4.5,2021-02-15,def
+         T,Inf,2021-02-16,ghi"
+)
+
+```
+
+These heuristics work well if you have a clean dataset; which is almost never the case. 
+
+## Missing Values, Column Types, and Problems
+
+The most likely culprit for your data getting whonky is an unexpected symbol or value for an NA. You can eyeball this with small datasets, which you will likely never encounter. So, what you CAN do is specify that a column be numeric to identify whonky missing data symbols. Then you can set `na = "whatever"`.
+
+@@ Column Types
+
+*reader* provides 9 column types for you to use. 
+
+* `col_logical()` and `col_double()` read logicals and real numbers, they are rare, and not needed often because readr can guess them.
+* `col_integer()` reads integers. They operate the same as doubles, but require less space and time reading them in. 
+* `col_character()` reads strings. Very useful when you have numeric identifiers (e.g., serial numbers)
+* `col_factor()`, `col_date()`, and `col_datetime()` create factors, dates, and date with time-stamps. Because fuck excel
+* `col_number()` ignores characters, useful for currencies
+* `col_skkp()` skips a column so its not included which helps if you have a huge table and only need a few columns. 
+
+It's also possible to override with explicit calls using `.default`
+```{r}
+another_csv <- "
+  x,y,z
+  1,2,3
+"
+
+read_csv(
+  another_csv,
+  col_types = cols(.default = col_character())
+)
+```
+
+Another helpful tool is the `cols_only` 
+
+```{r}
+read_csv(
+  another_csv,
+  col_types = cols_only(x = col_character())
+)
+
+```
+
+# Reading data from multiple files
+
+Sometimes, more often especially if you're dealing with relational databases, your data are not in a single data table. What are you to do? 
+
+In this example, let's say we have a bunch of sales files in an online directory, let's download them all quickly. 
+```{r}
+sales_files <- c(
+  "https://pos.it/r4ds-01-sales",
+  "https://pos.it/r4ds-02-sales",
+  "https://pos.it/r4ds-03-sales"
+)
+
+read_csv(sales_files, id = "file")
+
+```
+
+The `id` argument ads the file column to your data frame to specify which file the data came from. This is really helpful when the files themselves don't have an identifying column. You may have hundreds of files, and you don't want to type that many out, so you can use `list.files()` in a directory with some matching text. Thus, naming, and storing projects is critical. 
+
+# Writing to a file
+
+*readr* also comes with two helpful functions that enable you to write your R data to a file: `write_csv()` and `write_tsv`. Both require an *x* and *file* argument to specify the data table in R, and the directory you're saving it to. 
+
+```{r}
+# make sure you still have students read into your environment
+students # we do!
+
+write_csv(students, "students_2.csv")
+read_csv("students_2.csv")
+```
+
+This process is a bit cumbersome because as you recall 'csv files do not remember column types` so you have to continually re-specify. You have two other options:
+
+* `write_rds()` with `read_rds()` uniform wrappers over base functions with similar names writeRDS and readRDS. These store data in R's custom binary format called RDS. 
+
+```{r}
+write_rds(students, "students.rds")
+
+read_rds("students.rds")
+```
+
+* The `arrow` package allows you to read and write parquet files, a fast binary file format that can be shared across programming languages (helpful if you have snakes among you). 
+
+```{r}
+library(arrow)
+write_parquet(students, "students.parquet")
+read_parquet("students.parquet")
+```
+
+# Data Entry
+
+Sometimes you have to create data by hand using your R script...try to avoid this. But, when the time comes `tibble` and `tribble` will be your friends. 
+
+```{r}
+# tibble lays out by columns
+tibble(
+  x = c(1, 2, 3),
+  y = c("h", "m", "g"),
+  z = c(0.08, 0.83, 0.60)
+)
+
+# tribble lays out by rows
+tribble(
+  ~x, ~y, ~z,
+  1, "h", 0.08,
+  2, "m", 0.83,
+  5, "g", 0.60
+)
+```

@@ -1,0 +1,303 @@
+---
+title: "r4ds_ch20_spreadsheets"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+Importing. We know how to import from a .tsv or .csv. Now we will import from a spreadsheet, either Excel or Google. 
+
+# Prerequisites
+
+```{r}
+# Packages you will need
+pacman::p_load(tidyverse, readxl, writexl, here)
+```
+
+# Excel 
+
+## Getting Started
+
+* `read_xls()` reads Excel files with the xls format
+* `read_xlsx()` reads Excel files with the xlsx format
+* `read_excel()` reads Excel files with both the XLS and XLSX formats
+
+They work similar to `read_csv()`, `read_table()`, and `read_tsv()`. 
+
+
+## Reading Excel Spreadsheets
+
+```{r}
+students <- read_excel(here("../data", "students.xlsx"))
+
+students # not an ideal load because of the column names
+```
+
+Because the column names are all over the place we should specify them in our import step:
+
+```{r}
+students <- read_excel(here("../data", "students.xlsx"),
+                            col_names = c("student_id",
+                                          "full_name",
+                                          "favorite_food",
+                                          "meal_plan",
+                                          "age"))
+              
+
+students
+```
+
+Well, that didn't exactly do what we wanted, because now what were the header rows is a blank first row of observations which is also not ideal, we can skip that row:
+
+```{r}
+(students <- read_excel(here("../data", "students.xlsx"),
+                            col_names = c("student_id",
+                                          "full_name",
+                                          "favorite_food",
+                                          "meal_plan",
+                                          "age"),
+                        skip = 1)) 
+```
+
+Note that we have two NA, but one of them is `N/A` a string not an NA for R and 'NA'. Let's address that:
+
+```{r}
+(students <- read_excel(here("../data", "students.xlsx"),
+                            col_names = c("student_id",
+                                          "full_name",
+                                          "favorite_food",
+                                          "meal_plan",
+                                          "age"),
+                        skip = 1,
+                        na = c("", "N/A", "NA"))) 
+
+```
+
+One other issue is that age is a character variable not a numeric, let's fix that:
+
+```{r}
+(students <- read_excel(here("../data", "students.xlsx"),
+                            col_names = c("student_id",
+                                          "full_name",
+                                          "favorite_food",
+                                          "meal_plan",
+                                          "age"),
+                        skip = 1,
+                        na = c("", "N/A", "NA"),
+                        col_types = c("numeric",
+                                      "text",
+                                      "text",
+                                      "text",
+                                      "numeric"))) 
+
+```
+
+However, that didn't work either because the non-numeric data error in the age category that had a 5 as `five` is now NA. 
+
+```{r}
+(students <- read_excel(here("../data", "students.xlsx"),
+                            col_names = c("student_id",
+                                          "full_name",
+                                          "favorite_food",
+                                          "meal_plan",
+                                          "age"),
+                        skip = 1,
+                        na = c("", "N/A", "NA"),
+                        col_types = c("numeric",
+                                      "text",
+                                      "text",
+                                      "text",
+                                      "text"))) 
+
+# fix that five
+students <- students |> 
+  mutate(
+    age = if_else(age == "five", "5", age),
+    age = parse_number(age)
+  )
+
+glimpse(students)
+```
+This took a few steps and that is expected. Data science is iterative (trial and error) to solve problems. In general, you should treat excel files as immutable. And either a) make a copy of the called "burn_file" that you can peek in excel or 2) do like above and peek and reload, peek and reload etc. 
+
+## Reading Worksheets
+
+Excel is great as a flat file. But a workbook might have multiple flat files distributed across tabs. In `palmerpenguins` package we can see how we can load these data. 
+
+```{r}
+read_excel(here("../data", "penguins.xlsx"), sheet = "Torgersen Island")
+```
+
+Some variables that contain what appears to be numerical data read in as characters because of NA.
+
+```{r}
+read_excel(here("../data", "penguins.xlsx"), sheet = "Torgersen Island", na = "NA")
+```
+
+Alternatively, you can use read_excel() to get information on the file to see if it does have multiple sheets.
+
+```{r}
+excel_sheets(here("../data/penguins.xlsx")) # there are three
+```
+
+Once you know the name of the worksheets you can read them in individually:
+
+```{r}
+penguins_biscoe <- read_excel(here("../data", "penguins.xlsx"), sheet = "Biscoe Island", na = "NA")
+penguins_dream <- read_excel(here("../data", "penguins.xlsx"), sheet = "Dream Island", na = "NA")
+penguins_torgersen <- read_excel(here("../data", "penguins.xlsx"), sheet = "Torgersen Island", na = "NA")
+
+dim(penguins_biscoe)
+dim(penguins_dream)
+dim(penguins_torgersen)
+
+# you can bind them together 
+penguins <- bind_rows(penguins_torgersen, penguins_dream, penguins_biscoe)
+
+glimpse(penguins)
+```
+
+## Reading PART of a Sheet 
+
+Think about a lot of the excel sheets you've seen, they aren't always tidy or neat. They might have data you want in the middle surrounded by garbage. This section will show you how to extract the necessary information from those flat files by using an example that exists in the readxl package.
+
+```{r}
+deaths_path <- readxl_example("deaths.xlsx")
+
+deaths <- read_excel(deaths_path)
+
+deaths
+```
+
+So, as you can see, the top three rows in this data set are not data. So we need to tell R where to look:
+
+```{r}
+read_excel(deaths_path, range = "A5:F15")
+```
+
+# Data Types
+
+Often the displayed data type in a flat file like Excel (whether csv or xlsx) is not the same as the underlying data. What this means is, Excel can have a lot of values that look like numbers or dates but in fact aren't. As such, a good reommended work flow is, load the data and let readxl do what it thinks is best. Then, fix and re-load with col_types specifications. 
+
+Sometimes, you might even have multiple types of data in a single file. Or things like background color or font bolding. If that's the case you might want to consider exploring `tidyxl` package. 
+
+# Writing to Excel
+
+Let's create a toy dataset to write out. 
+
+```{r}
+
+bake_sale <- tibble(
+  item = factor(c("brownie", "cupcake", "cookie")),
+  quantatity = c(10, 5, 8)
+)
+
+# write back to a disc
+write_xlsx(bake_sale, path = here("../data", "bake_sale.xlsx"))
+
+
+# now bring it back in 
+read_excel(here("../data/bake_sale.xlsx"))
+```
+
+## Formatted Output
+
+readxl is a liteweight way to load and write excel. But, if you need beefier specifications and formatinng use `openxlsx` package. For example, you may need to write to a sheet. 
+
+### Exercises
+
+#### 20.1a Create the dataset from the book call it `survey.xlsx`. Then read it into R. 
+
+```{r}
+# you lose data
+read_xlsx(here("../data", "survey.xlsx"), 
+          col_types = c("text", "numeric"))
+
+# should do it like this
+survey <- read_xlsx(here("../data", "survey.xlsx"))
+
+survey |> 
+  mutate(
+    n_pets = if_else(n_pets == "two", "2", n_pets),
+    n_pets = parse_number(n_pets),
+    n_pets = c(n_pets, as.numeric()),
+    survey_id = c(survey_id, as.character())
+    )
+```
+
+#### 20.2a Load roster
+
+```{r}
+roster <- read_xlsx(here("../data", "roster.xlsx"))
+
+roster |> 
+  fill(everything(), .direction = "down") 
+```
+
+#### 20.3a Load sales
+
+```{r}
+read_xlsx(here("../data", "sales.xlsx"), range = c("A6:B8"), col_names = FALSE) -> sales1
+read_xlsx(here("../data", "sales.xlsx"), range = c("A10:B13"), col_names = FALSE) -> sales2
+
+bind_rows(sales1, sales2) -> sales
+
+sales
+
+sales |> 
+  rename("id" = "...1",
+         "n" = "...2") |> 
+  mutate(
+    brand = if_else(id == "1234" | id == "8721" | id =="1822", "Brand 1", "Brand 2")
+  )
+```
+
+#### 20.4a Re-create the bake_sale data, and save it to an Excel file using the write_xlsx() functions in openxlsx
+
+```{r}
+pacman::p_load(openxlsx)
+
+bake_sale
+
+# create work book
+bake_sale_wb <- createWorkbook(here("..data/"))
+
+# add workseets 
+addWorksheet(bake_sale_wb, "bake_sale")
+
+x <- bake_sale
+
+writeData(bake_sale_wb, "bake_sale", x, startCol = 1, startRow = 1, rowNames = TRUE, colNames = TRUE)
+
+# saveWorkbook(bake_sale_wb, here("../data", "bake_sale_wb.xlsx"))
+```
+
+#### 20.5a Use janitor::clean function to clean students names
+
+
+```{r}
+# pretty sure these were already fine?
+students |> 
+  janitor::clean_names()
+
+```
+
+#### 20.6a What happens when you try and read an xlsx file with read_xls function? 
+
+_ANSWER_ Does not work. 
+```{r}
+#read_xls(here("../data", "students.xlsx"))
+```
+
+# Googlesheets
+
+This section requires a different set of packages: I skipped this because it was ridiculous connecting to their database. But I get the point. 
+

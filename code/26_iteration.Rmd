@@ -1,0 +1,20 @@
+---
+title: "r4ds_ch26_iteration"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+# Prerequisites
+
+```{r}
+pacman::p_load(tidyverse, here, broom, janitor)
+```
