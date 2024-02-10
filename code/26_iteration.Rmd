@@ -13,8 +13,539 @@ output:
 
 # Summary
 
+In this chapter we will learn and practice iteration, or, the repeated performance of the same action on different objects (this is going to be really useful).
+
 # Prerequisites
 
 ```{r}
 pacman::p_load(tidyverse, here, broom, janitor)
+```
+
+# Modifying Multiple Columns
+
+Imagine you have a relatively simple tibble that you want to calculate the median on each column.
+
+```{r calculate the median on each column}
+df <- tibble(
+  a = rnorm(10),
+  b = rnorm(10),
+  c = rnorm(10),
+  d = rnorm(10)
+)
+
+glimpse(df)
+
+```
+
+You could do this with four copy and paste, but this breaks the rule of never copy and paste more than twice.
+
+```{r copy and paste median method}
+df |> 
+  summarize(
+    n = n(),
+    a = median(a),
+    b = median(b),
+    c = median(c),
+    d = median(d)
+  )
+
+```
+
+Instead, what we should use is `across()`
+
+```{r demonstrating across}
+df |> 
+  summarize(
+    n = n(),
+    across(a:d, median)
+  )
+
+```
+
+## Selecting Columns with .cols
+
+the `.cols` argument within `across()` takes the same form essentially as `select()`, but `across()` can also take `where()` and `everything()` which are pretty straightforward, where a variable meets a criteria, and everything. 
+
+```{r demonstrating everything}
+df <- tibble(
+  grp = sample(2, 10, replace = TRUE),
+  a = rnorm(10),
+  b = rnorm(10),
+  c = rnorm(10),
+  d = rnorm(10)
+)
+
+# Very useful iteration of median
+df |> 
+  group_by(grp) |> 
+  summarize(across(everything(), median))
+
+# Example of where in the select statement (should you have a bigger more complicated data.frame)
+df |> 
+  group_by(grp) |> 
+  select(where(is.numeric)) |> 
+  summarize(across(everything(), median))
+```
+
+## Calling a Single Function
+
+Important, when you call a `.fns` within `across()`, across is actually calling the function so you don't need the `()`. 
+
+```{r same example as above}
+df |> 
+  group_by(grp) |> 
+  summarize(across(everything(), median))
+
+# As such this wouldn't work ...summarize(across(everything(), median()))
+
+```
+
+## Calling Multiple Functions
+
+What happens if we have some missing values in our data? Median propagates those missing values, giving us suboptimal output:
+
+```{r example of anaonymous function within .fns}
+rnorm_na <- function(n, n_na, mean = 0, sd = 1){
+  sample(c(rnorm(n - n_na, mean = mean, sd = sd), rep(NA, n_na)))
+}
+
+df_miss <- tibble(
+  a = rnorm_na(5, 1),
+  b = rnorm_na(5, 1),
+  c = rnorm_na(5, 2),
+  d = rnorm(5)
+)
+
+
+df_miss |> 
+  summarize(
+    across(a:d, median),
+    n = n()
+  )
+```
+
+What would be better is to pass along `na.rm = TRUE` to `median()`. So, here, instead of calling median directly we create a new function that does what we want.
+
+```{r}
+df_miss |> 
+  summarize(
+    across(a:d, function(x) median(x, na.rm = TRUE)), #anonymous function which is a bit verbose so you can use built in r code for anonymous functions
+    n = n()
+  )
+
+# Tidier way of the above
+df_miss |> 
+  summarize(
+    across(a:d, \(x) median(x, na.rm = TRUE)),
+    n = n()
+  )
+```
+
+
+Either or from above functionally makes the following easier to reproduce:
+
+```{r proof that the above is easier}
+# So much typing
+df |> 
+  summarize(
+    n = n(),
+    a = median(a, na.rm = TRUE),
+    b = median(b, na.rm = TRUE),
+    c = median(c, na.rm = TRUE),
+    d = median(d, na.rm = TRUE)
+  )
+
+```
+
+So, building on the above reproducibility win, we can add yet another function to count the number of missing that are removed. 
+
+```{r count missing and remove missing from median}
+df_miss |> 
+  summarize(
+    across(a:d, list(
+      median = \(x) median(x, na.rm = TRUE),
+      n_miss = \(x) sum(is.na(x))
+    )),
+    n = n()
+  )
+
+```
+
+## Column Names
+
+As you might have noticed in the above examples, the .names argument in `across()` borrows `str_glue()` functionality by gluing .cols_.fns naming convention. 
+
+
+```{r supplying our own names}
+df_miss |> 
+  summarize(
+    across(a:d, list(
+      median = \(x) median(x, na.rm = TRUE),
+      n_miss = \(x) sum(is.na(x))
+    ),
+    .names = "{.fn}_{.col}" # we can specify the names here
+    ),
+    n = n()
+  )
+
+```
+
+This is particularly useful when you use `across()` with `mutate()`
+
+
+For example here we replace NAs with 0s
+```{r }
+df_miss |> 
+  mutate(
+    across(a:d, \(x) coalesce(x, 0))
+  )
+
+# Now with new columns and names
+df_miss |> 
+  mutate(
+    across(a:d, \(x) abs(x), .names = "{.col}_{.fn}")
+  )
+
+```
+
+## Filtering
+
+`across()` is a great match for summarize and mutate but it's more awkward with filtering. Across can work with | or & but then what? So we provide two new functions `if_any()` and `if_any()`
+
+```{r }
+df_miss |> 
+  filter(if_any(a:d, is.na))
+
+
+df_miss |> 
+  filter(if_all(a:d, is.na))
+```
+
+## across() in Functions
+
+Is particularly useful to program with because it allows you to perate on multiple columns. 
+
+```{r }
+expand_dates <- function(df){
+  df |> 
+    mutate(
+      across(where(is.Date), list(year = year, month = month, day = mday))
+    )
+}
+
+df_date <- tibble(
+  name = c("Amy", "Bob", "Ellen", "Andrew", "Laura", "Robbie"),
+  date = ymd(c("1979-05-02", "1952-01-31", "1952-04-01", "1983-04-07", "1991-03-07", "2022-11-08"))
+)
+
+df_date |> 
+  expand_dates()
+
+```
+
+Across also makes it easy to supply multiple columns in a single argument because the first argument uses tidy-select; you just need to remember to embrace that argument (i.e., `{{embrace}}`)
+
+```{r }
+summarize_means <- function(df, summary_vars = where(is.numeric)){
+  df |> 
+    summarize(
+      across({{ summary_vars }}, \(x) mean(x, na.rm = TRUE)),
+      n = n()
+    )
+}
+
+diamonds |> 
+  group_by(cut) |> 
+  summarize_means(
+    
+  )
+
+diamonds |> 
+  group_by(cut) |> 
+  summarize_means(c(carat, x:z)) #reduce to the columns you care about
+```
+
+## Versus pivot_longer()
+
+Most of the time you perform calculations by first pivoting the data and then performing operations by group rather than by columns (which makes some data types difficult). For example:
+
+```{r }
+df |> 
+  summarize(across(a:d, list(median = median, mean = mean)))
+
+
+# This can do the same thing, and is really useful for certain problems that across can't deal with
+df |> 
+  pivot_longer(a:d) |> 
+  group_by(name) |> 
+  summarize(
+    median = median(value),
+    mean = mean(value)
+  ) |> 
+  pivot_wider(
+    names_from = name,
+    values_from = c(median, mean),
+    names_vary = "slowest",
+    names_glue = "{name}_{.value}"
+  )
+```
+
+
+Here is an example of way knowing the pivot^2 approach is so useful:
+
+```{r }
+df_paired <- tibble(
+  a_val = rnorm(10),
+  a_wts = runif(10),
+  b_val = rnorm(10),
+  b_wts = runif(10),
+  c_val = rnorm(10),
+  c_wts = runif(10),
+  d_val = rnorm(10),
+  d_wts = runif(10)
+)
+
+# pivot^2 approach
+df_paired |> 
+  pivot_longer(
+    everything(),
+    names_to = c("group", ".value"),
+    names_sep = "_"
+  ) |> 
+  group_by(group) |> 
+  summarize(
+    mean = weighted.mean(val, wts)
+  )
+# note you could save ans _long and _wide formats intermediary, I didn't out of curiousity. 
+```
+
+### Exercises 
+
+#### 26.1a Practice your `across()` skills by:
+a) Computing the number of unique values in each column of palmerpenguins::penguins
+b) Compute the mean of every column in mtcars
+c) Grouping diamonds by cut, clairty, and color and then counting the number of observations and computin gthe mean of each numeric column
+
+```{r }
+penguins <- palmerpenguins::penguins
+glimpse(penguins)
+
+# Calculate unique values across each column
+penguins |> 
+  summarize(
+    across(everything(), ~ n_distinct(., na.rm = TRUE)))
+
+
+# Calculate the mean of every column in mtcars
+penguins |> 
+  summarize(
+    across(everything(), list(
+      mean = \(x) mean(x, na.rm = TRUE)
+    ),
+    .names = "{.fn}_{.col}")
+  ) 
+  
+# Calculate the number of observations and computing the mean of each numeric column
+summarize_means <- function(df, summary_vars = where(is.numeric)){
+  df |> 
+    summarize(
+      across({{ summary_vars }}, \(x) mean(x, na.rm = TRUE)),
+      n = n()
+    )
+}
+
+diamonds |> 
+  group_by(cut, clarity, color) |> 
+  summarize_means()
+```
+
+#### 26.2a What happens if you use a list of functions in across(), but don't name them? How is the output named? 
+
+ANSWER: It appears to just put a number relative to the function you called
+```{r}
+df_miss |> 
+  summarize(
+    across(a:d, list(
+      \(x) median(x, na.rm = TRUE),
+      \(x) sum(is.na(x)),
+      \(x) mean(x, na.rm = TRUE)
+    )),
+    n = n()
+  )
+```
+
+#### 26.3 Adjust expand_dates() to automatically remove the date columns after they've been expanded. Do you need to embrace any arguments?
+
+ANSWER: No, I didn't need to embrace. But, maybe there is another solution?
+```{r }
+expand_dates <- function(df){
+  df |> 
+    mutate(
+      across(where(is.Date), list(year = year, month = month, day = mday))
+    ) |> 
+    select(!where(is.Date)) 
+}
+
+df_date |> 
+  expand_dates()
+
+```
+
+#### 26.4 Explain what each step of the pipline in this function does. What special feature of where() are we taking advantage of? 
+
+ANSWER: group by a set of grouping variables supplied, then summarized across the summary variables, in this case everything not in the grouping variables return the sum of is.na() == TRUE. We can then take advantage of the purrr-like functions in where() to return functions with logic inline. 
+```{r}
+show_missing <- function(df, group_vars, summary_vars = everything()) {
+  df |> 
+    group_by(pick({{ group_vars }})) |> 
+    summarize(
+      across({{ summary_vars }}, \(x) sum(is.na(x))),
+      .groups = "drop"
+    ) |> 
+    select(where(\(x) any(x > 0)))
+}
+
+nycflights13::flights |> 
+  show_missing(c(year, month, day))
+
+```
+
+# Reading Multiple Files
+
+In this section we will use `purrr::map()` to do something to every file in a directory. This is particularly useful when you have a directory of excel files. The below example is likely how you have done this in the past (guilty), but imagine 100s of data files...
+
+```{r }
+#data2019 <- readxl::read_excel("data/y2019.xls")
+#data2020 <- readxl::read_excel("data/y2020.xls")
+#data2021 <- readxl::read_excel("data/y2021.xls")
+#data2022 <- readxl::read_excel("data/y2022.xls")
+#data2023 <- readxl::read_excel("data/y2023.xls")
+
+# then,
+
+#data <- bind_rows(data2019, data2020, data2021, data2022, data2023)
+```
+
+## Listing Files in a Directory
+
+`list.files()` does what it sounds like. The first argument is `path`, the next is `pattern` to look for, then `full.names` almost always want this to be TRUE.
+
+```{r }
+
+paths <- list.files(here(), pattern = ".Rmd$", full.names = TRUE)
+
+# Much easier to call the file you need from a list
+paths[[1]]
+
+paths[[4]]
+```
+
+## purrr::map() and list_rbind()
+
+Technically, what we just did isn't really that much less tedious than just copy paste and bind_rows(). Below example assumes you have some data. 
+
+```{r }
+#files <- map(paths, readxl::read_excel)
+
+#list_rbind(files)
+
+# or you can do both at once in a pipeline
+#paths |> 
+#  map(readxl::read_excel) |> 
+#  list_rbind()
+```
+
+So, if you follow along with the example in the book, which I didn't do because I didn't have time to track down the excel files in the example, then you'd note that the above solution is missing the year. The year is captured in the path. 
+
+## Data in the Path
+
+Sometimes the name of the file is data itself (e.g., MIUR 2023 when I worked at the state).
+
+Do accomplish extracting the data out of the path:
+First, we name the vector of paths
+Second, we use the names_to argument
+
+Again the example below won't work
+```{r }
+# basename()
+#paths |> set_names(basename)
+
+# files <- paths |> 
+# set_names(basename) |> 
+# map(readxl::read_excel) |> 
+# list_rbind(names_to = "year") |> 
+#mutate(year = parse_number(year))
+
+# There are obvioulsy more complicated cases that you can use set_names() and then tidyr::separate_wider_delim() like you would in excel. 
+
+```
+
+## Save your Work
+```{r}
+# final_name <- paths |> 
+# set_names(basename) |> 
+# map(readxl::read_excel) |> 
+# list_rbind(names_to = "year") |> 
+#mutate(year = parse_number(year))
+
+#write_csv(final_name, "final_name.csv")
+
+```
+
+
+# Many Simple Iterations
+
+It is likely better to do many simple iterations than one big complex (especially if others will work with your data).
+
+# Heterogeneous Data
+
+Examples are scant in the book, but basically there are ways to check and build functions to check and tidy data on input. 
+
+# Handling Failures
+
+map() will either be successful with everything, or fail for everything (even if only one line fails).  purrr, comes with a helper function called `possibly` that enables you to run a code that tells you where something failed (that you specify)
+
+# Saving Multiple Outputs
+
+There are great examples of creating a database or saving multiple csv.
+
+# Saving Plots
+
+
+The same basic approach as above, but we can work through this here with the plots example. 
+
+
+```{r }
+# Saving multiple csv
+by_clarity <- diamonds |> 
+  group_nest(clarity)
+
+# Now we have a new grouping variable, where one tibble for each unique value
+by_clarity[[1]]
+
+# update our function to give the name of the output file using mutate() and str_glue()
+by_clarity <- by_clarity |> 
+  mutate(path = str_glue(here("../data", "diamonds-{clarity}.csv")))
+
+# Now rather than saving by hand we can use map2 and walk2
+walk2(by_clarity$data, by_clarity$path, write_csv)
+
+# First, lets make a function that draws the plot we want:
+carat_histogram <- function(df){
+  ggplot(df, aes(x = carat)) + geom_histogram(binwidth = 0.3)
+}
+
+# now we can use map to create a list of many plots and their eventual file paths
+by_clarity <- by_clarity |> 
+  mutate(
+    plot = map(data, carat_histogram),
+    path = str_glue("../data", "clarity-{clarity}.png")
+  )
+
+
+# walk2 and ggsave
+walk2 (
+  by_clarity$path,
+  by_clarity$plot,
+  \(path, plot) ggsave(path, plot, width = 6, height = 6))
 ```
