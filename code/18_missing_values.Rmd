@@ -1,0 +1,245 @@
+---
+title: "r4ds_ch18_missing_values"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+Missing values and missing data are a science in themselves. They are also more than annoying, they are require a bit of thinking and analysis in every study. Learning to work with them is critical. 
+
+# Prerequisites
+
+```{r}
+# Packages you will need
+pacman::p_load(tidyverse)
+```
+
+# Explicit Missing Values
+
+Some tools for creating or eliminating cells where you see `NA`. 
+
+## Last Observations Carried Forward
+
+Often, when data are entered by hand, a missing or repeated value is often been repeated (or carried forward). You can fill in these missing values with `tidyr::fill()`
+
+```{r}
+treatment <- tribble(
+  ~person,            ~treatment, ~response,
+  "Derrick Whitmore", 1,          7,
+  NA,                 2,          10,
+  NA,                 3,          NA,
+  "Katherine Burke",  1,          4
+)
+
+# you can use 
+treatment |> 
+  fill(everything(), .direction = "down") # you can add the .direction to get fancy with how you think the error was created. 
+
+```
+
+## Fixed Values
+
+Sometimes missing values represent some fixed and known value, most commonly 0. You can use `dplyr::coalesce()` to replace them:
+
+```{r}
+x <- c(1, 4, 5, 7, NA)
+
+coalesce(x, 0)
+
+```
+
+Sometimes, though less likely now, when dealing with older software that had no way of representing missing values they substituted -999, 99, or some such explicit value for negative values. Generally, you should be aware of this as you read the data into R and make the appropriate change then. But, life isn't always as planned. 
+
+```{r}
+x <- c(1, 4, 5, 7, -999)
+
+na_if(x, -999)
+
+```
+
+## NaN
+
+Before we go any further, there's a very special kind of missing value. NaN behaves like NA for most cases but in the rare case where/when you need to distinguish between the two `is.nan(x)` is your go to code. 
+
+```{r}
+x <- c(NA, NaN)
+
+x * 10
+
+x == 1
+
+is.na(x)
+
+# rare cases where NaN is actually telling you something important. 
+0 / 0
+
+0 * Inf
+
+Inf - Inf
+
+sqrt(-1)
+```
+
+# Implicit Missing Values
+
+Implicit missing data may look more like an entire missing row of data. For example, here we have an explicit missing data in a cell, and we are missing the entire first quarter of 2021, implicitly.  
+
+```{r}
+stocks <- tibble(
+  year  = c(2020, 2020, 2020, 2020, 2021, 2021, 2021),
+  qtr   = c(   1,    2,    3,    4,    2,    3,    4),
+  price = c(1.88, 0.59, 0.35, NA, 0.92, 0.17, 2.66) 
+)
+
+stocks
+
+```
+
+## Pivoting
+
+You've seen this with `pivot_wider()` and `pivot_longer()`. By default making data longer preserves explicit missing values, but if they are structurally missing values that exist only because the data is not tidy, you can drop them (make them implicit) by setting `values_drop_na = TRUE`
+
+```{r}
+stocks |> 
+  pivot_wider(
+    names_from = qtr,
+    values_from = price
+  )
+
+```
+
+## Complete
+
+`tidyr::complete()` allows you to generate explicit missing values by providing a set of variables that define the combination of rows that should exist. For example, we know that all combinations of year and quarter *should* exist in the stocks data set. 
+
+```{r}
+stocks |> 
+  complete(year, qtr)
+
+```
+
+Typically, you'll call complete with names of existing variables. However, as always, sometimes the variables themselves are what's incomplete or missing, so you can provide your own data. 
+
+```{r}
+stocks |> 
+  complete(year = 2019:2021, qtr)
+
+```
+
+If the range of a variable is correct but not all values are present, you could use `full_seq(x, 1)` to generate values from `min(x)` to `max(x)` spaced out by 1. You might have to do what complete does completely manually, and then `full_join()` your data. 
+
+## Joins
+
+Another way of revealing implicitly missing data is with joins. You might only realize data is missing when you compare one table, data set to another table, or data set. 
+
+```{r}
+library(nycflights13)
+
+flights |> 
+  distinct(faa = dest) |> 
+  anti_join(airports)
+
+flights |> 
+  distinct(tailnum) |> 
+  anti_join(planes)
+
+```
+
+#### Exercises
+
+### 18.1a Can you find any relationship between the carrier and the rows that appear to be missing from planes? 
+
+_Answer_ No idea don't care. 
+
+# Factors and Empty Groups
+
+The empty group. A group that doesn't contain any obserations (e.g., a level of a factor, an unchecked category etc.). Say we have these health data.
+
+```{r}
+health <- tibble (
+  name = c("Ikaia", "Oletta", "Leriah", "Dashay", "Tresaum"),
+  smoker = factor(c("no", "no", "no", "no", "no"), levels = c("yes", "no")),
+  age = c(34, 88, 75, 47, 56)
+)
+
+health
+```
+
+And we want to count the number of smokers
+
+```{r}
+health |> 
+  count(smoker, .drop = FALSE) # this will retain all the levels so we don't assume anything of our data. 
+
+```
+
+The same principle applies to ggplots discrete axes, which will by default drop any levels that do not contain observations. 
+
+```{r}
+ggplot(health, aes(x = smoker)) +
+  geom_bar() +
+  scale_x_discrete()
+
+# you should probably do this for default with bar plots
+ggplot(health, aes(x = smoker)) +
+  geom_bar() +
+  scale_x_discrete(drop = FALSE)
+```
+
+
+The same principle comes up more generally with `dplyr::group_by()`, where `.drop = FALSE` will come back and save your skin.
+
+```{r}
+# will still give you an aggro warning
+health |> 
+  group_by(smoker, .drop = FALSE) |> 
+  summarize(
+    n = n(),
+    mean_age = mean(age),
+    min_age = min(age),
+    max_age = max(age),
+    sd_age = sd(age)
+  )
+
+```
+
+
+The aggro warning comes with a lesson about summarizing an empty group, or when summary functions are applied to zero-length vectors. There's an important distinction between empty vectors, which have a length of 0, and missing values, each of which has length of 1. 
+
+```{r}
+# a vector containing two missing values
+x1 <- c(NA, NA)
+
+length(x1)
+
+# a vector containing nothing
+
+x2 <- numeric()
+
+length(x2)
+
+```
+
+All summary functions work with 0 length vectors, but they will return surprising results. You can see the result of `0 / 0` with the mean and other NaN's produced because of Inf / Inf issues, etc. Another strategy is to use `complete` for the missind data.
+
+```{r}
+health |> 
+  group_by(smoker) |> 
+  summarize(
+    n = n(),
+    mean_age = mean(age),
+    min_age = min(age),
+    max_age = max(age),
+    sd_age = sd(age)
+  ) |> 
+  complete(smoker) # turns it all to NAs since that's what is actually true
+
+```

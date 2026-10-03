@@ -1,0 +1,180 @@
+---
+title: "r4ds_ch5_data_tidying"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+> "Tidy datasets are all alike, but every messy dataset is messy in its own way" ~ Hadley Wickham
+
+# Summary
+
+Tidy data takes some effort, but the up-front costs will pay off in long term gains to run analyses
+
+## Tidy Data
+
+What makes data *tidy*?
+
+1. Each variable is a column; each column is a variable
+2. Each observation is a row; each row is an observation
+3. Each value is a cell; each cell is a single value
+
+Tidy data makes sense because it is an emerging set of rules based on R's built in value of vectors. If you put all variables in a column (i.e., vector) it makes computation and transformation really easy. 
+
+### Exercises skipped because they are not easily transferred to here. 
+
+# Lengthening data
+
+Data are not collected with analysis in mind, rather they are collected with methods for making data entry easier. Also, people don't tend to know what tidy data mean or the rules because they work with data sporadically. As such, most if not all datasets you run into will be untidy. But, we have useful functions: *pivot_wider* and *pivot_longer* to help us out!
+
+## Data in columns
+
+```{r}
+library(tidyverse)
+
+glimpse(billboard) # the column names are one variable (the week) and the cell values are another (the rank) so we need to pivot_longer
+
+billboard_longer <- billboard |> 
+  pivot_longer(
+    cols = starts_with("wk"),
+    names_to = "week",
+    values_to = "rank",
+    values_drop_na = TRUE
+  ) |> 
+  mutate(
+    week = parse_number(week)
+  )
+
+billboard_longer
+```
+Taking a few steps we make our job to analyze the billbaord data set easier. *pivot_longer* which extracts the two values represented in "wk" into week, and rank. Then we drop the "NAs" that are created by our pivot (i.e., so they are not really missing). And then we mutate to change the character values in week to numeric, using the *parse_number* function. Easy. 
+
+Now we can visualize how long songs stay in the top
+
+```{r}
+# most songs drop off after or around 20 weeks
+billboard_longer |> 
+  ggplot(aes(x = week, y = rank, group = track)) +
+  geom_line(alpha = 1/4) +
+  scale_y_reverse()
+```
+
+
+## How does pivoting work? 
+
+Let's take a peak behind the code to see how pivoting works? 
+
+```{r}
+chickenwings <- tribble(
+  ~id, ~bp1, ~bp2,
+  "A", 100, 120,
+  "B", 140, 115,
+  "C", 120, 125
+)
+
+glimpse(chickenwings)
+```
+
+
+This looks cool and is easy to understand, but we have the same problem of two values being represented in the cells. We want to pivot longer. 
+
+```{r}
+
+chickenwings |> 
+  pivot_longer(
+    cols = bp1:bp2,
+    names_to = "measurement",
+    values_to = "value"
+  )
+
+# see, this moves to the two column names to two new values associated with each id, and two numeric values associated with each measurement to another column. 
+```
+
+## Many variables in column names
+
+Here is an example of having many values in each column. Sp/rel/ep are the codes for the method of diagnosis; m/f are gender; the numbers are age range. What a mess...
+
+```{r}
+# let's take a look at the World Health Organizations tuberculosis dataset where there are six pieces of information in each code. 
+glimpse(who2)
+
+# fix it
+who2 |> 
+  pivot_longer(
+    cols = !(country:year),
+    names_to = c("diagnosis", "gender", "age"),
+    names_sep = "_",
+    values_to = "count"
+  )
+```
+
+## Data and variable names in the column headers
+
+The next step up in complexity is when the data and variable names are included in column headers. 
+
+```{r}
+household # woof
+
+household |> 
+  pivot_longer(
+    cols = !family,
+    names_to = c(".value", "child"), #.value indicates the column names input contribute to both values and name
+    names_sep = "_",
+    values_drop_na = TRUE
+  )
+
+```
+
+
+# Widening data
+
+While less observed in the wild, this is often a problem in government data (or healthcare). 
+
+```{r}
+cms_patient_experience
+
+# look at the distinct complete set of values for measure_cd and measure_title
+cms_patient_experience |> 
+  distinct(measure_cd, measure_title)
+```
+
+Neither of those columns are particular helpful naming conventions, but for the example we will use measure_cd. *pivot_wider()* works exactly opposite of *pivot_longer*
+
+```{r}
+cms_patient_experience |> 
+  pivot_wider(
+    id_cols = starts_with("org"),
+    names_from = measure_cd,
+    values_from = prf_rate
+  )
+```
+
+## How does pivot_wider work?
+
+```{r}
+chickenwings <- tribble(
+  ~id, ~measurement, ~value,
+  "A", "bp1", 100,
+  "B", "bp1", 140,
+  "B", "bp2", 135,
+  "A", "bp2", 120,
+  "A", "bp3", 105
+)
+
+# look at it
+chickenwings
+
+# now let's watch with a simple example
+
+chickenwings |> 
+  pivot_wider(
+    names_from = measurement,
+    values_from = value
+  )
+```

@@ -1,0 +1,91 @@
+---
+title: "28_quarto"
+author: "Andy B. PhD"
+date: "2024-02-09"
+date-modified: "`r format(Sys.Date(), '%B %d, %Y')`"
+abstract: "hello quarto"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r }
+#| label: setup
+#| include: false
+
+pacman::p_load(tidyverse, here, broom, janitor)
+
+smaller <- diamonds |> 
+  filter(carat <= 2.5)
+
+```
+
+We have data about `r nrow(diamonds)` diamonds. Only `r nrow(diamonds) - nrow(smaller)` are larger than 2.5 carats. The distribution of the remainder is shown below:
+
+```{r }
+#| label: plot-smaller-diamonds
+#| echo: false
+#| warning: false
+
+smaller |> 
+  ggplot(aes(x = carat)) +
+  geom_freqpoly(binwidth = 0.01)
+```
+
+## Text Formatting
+
+*italic* **bold** ~~strikeout~~ `code`
+
+superscript^2^
+
+subscript~2~
+
+\[underline\]{.underline}
+
+\[small caps\]{.smallcaps}
+
+## Headings
+
+# 1st Level
+
+## 2nd Level
+
+### 3rd Level
+
+#### 4th Level
+
+##### 5th Level
+
+###### 6th Level is as small is it goes
+
+## Lists
+
+-   bullet
+
+    -   indent
+
+        -   indent again
+
+            -   and again
+
+                -   and again
+
+                    -   and again
+
+                        -   and I think I can keep going but why
+
+1.  Numbered list item 1
+2.  Incremented
+
+## Links and Images
+
+<http://example.com> #I'm fake
+
+\[linked phrase\](http://example.com}
+
+\![optional caption text](quarto.png)
+
+## Tables
+
+Also didn't work from example, so fuck this.

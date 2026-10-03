@@ -1,0 +1,60 @@
+---
+title: "r4ds_ch8_workflow_getting_help"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+ChatGPT may be quick, but garbage in, garbage out. Meaning, if you don't know what you're doing then you will accept almost any garbage it gives you. So, let's explore some more trusted ways of getting help. 
+
+# Google
+
+Someone else has for sure made your same mistakes. Where Google doesn't direct you to Stack Overflow, head there next. 
+
+# Making a reprex
+
+Reprex = short for minimal reproducible example. Make something simple enough to recreate your problem and for others to follow along. Often, I've found, in the process of making a reprex, I solve my own problem. Life man - what a trip. 
+
+Two steps to make a reprex
+
+* Make your code reproducible. Capture everything, library(), all steps to tidy your data etc. 
+* Make it minimal. Strip away anything you did for funsies on the side so someone doesn't get distracted when helping you. Or, more likely, strip away all the other variables etc. that could distract. 
+
+> 80% of the time it works everytime, and 20% of the other times it works 100% of the time. 
+
+```{r}
+y <- 1:4
+
+mean(y) # let's say this isn't work, but it totally is
+
+#reprex::reprex() will create RMarkdown file, which we can't do because we are already in an RMarkdown file. Meta Markdown. 
+```
+
+All reprex should include:
+1. Packages. Loaded at the top of the script (check to see you have the latest versions, or look up any changes with latest versions)
+2. Data. Use dput() 
+  * run dput(mtcars) in R
+  * copy the output
+  * in reprex, type mtcars <-, and then paste
+3. Make sure your code is easy to follow (write once edit twice)
+  * use spaces, concise variable names
+  * comments especially for problematic lines
+  * do your best to remove all nonrelevant items
+
+The shorter the faster someone will help. Then start a fresh R session and see if you can reproduce the error. 
+
+# Investing in yourself
+
+Keep up on your R (don't let yourself go weeks without using it, no joke)
+
+* Check out tidyverse blog
+* Check out R Weekly
+

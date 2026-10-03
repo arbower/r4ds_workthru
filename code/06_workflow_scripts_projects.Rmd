@@ -1,0 +1,69 @@
+---
+title: "r4ds_ch6_workflow_scripts_projects"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+This code section corresponding with the book will teach y'all about organizing your code into scripts and projects. This is something I sort of know how to do, but will be nice to read up on it. 
+
+## Scripts
+
+This is a script. We've been doing this for years. Don't use the console unless it's simplistic. 
+
+## Running Code
+
+cmd/ctl + shift + enter and cmd/ctl + shift + s are hot keys to learn. One runes the current code section, the other runs the full script. 
+
+! Never give a script with *install.packages()* at the beginning - it's like forcing someone to do something. Rather, just list the library() arguments for what that code will need at the very top of every script. 
+
+## RStudio diagnostics
+
+It let's you know when you've f'd up.
+
+## Saving and Naming
+
+1. Filenames should be machine readable: avoid spaces, symbols, and special characters. Don't relay on case sensitivity to distinguish file types. 
+2. Filenames should be human readable: use filenames to describe what's in the file.
+3. Filenames should play well with default ordering: start filenames with numbers so that alphabetical sorting puts them in the they order they get used. 
+
+Example:
+
+* 01_load_data.R
+* 02_exploratory_analyses.R
+* 03_model_approach_1.R
+* 04_model_approach_2.R
+* fig_01.png
+* fig_02.png
+* report_2022_03_20.qmd
+* report_2022_04_02.qmd
+* report_draft_notes.qmd
+
+# Projects
+
+One day, you will need to do complicated stuff. 
+
+## What is the source of truth? 
+
+Your source of truth should be .R Scripts (and data files), you can recreate the environment, anywhere. 
+
+You should _NOT_ preserve your workspace between sessions. Either by running *usethis::use_blank_slate()*
+
+# Where does your analysis live? 
+
+## RStudio Projects
+```{r}
+getwd() # show's you where you are!
+
+library(here)
+
+here() # does the same thing
+```

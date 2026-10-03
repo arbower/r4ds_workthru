@@ -1,0 +1,72 @@
+---
+title: "r4ds_ch4_workflow: code style"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+Code style is like punctuation. You don't need it, but it makes things easier. What might feel like tediousness at first will be much appreciated by future you. Once you download styler package (i.e., install.packages("styler)) you can use tools to restyle existing code using the command palette for rstudio. We will be using *tidyverse* and *nycflights13* with this chapter. 
+
+```{r}
+library(tidyverse)
+library(nycflights13)
+```
+
+## Names
+
+Use snakecase. So, variables_should_be_like_this, or like_this_2. 
+
+```{r}
+# strive for:
+short_flights <- flights |> filter(air_time < 60)
+```
+
+If you have a convention make sure you document it with a '#' and error on the side of long, descriptive names, rather than short. Because future you will thank you. In addition, if you have lots of variables with similar constructs put the identifier in the prefix rather than suffix. So a depression scale: dep_1. 
+
+## Spaces
+
+Always put spaces on either side of mathematical functions (e.g., 1 + 1 not 1+1). 
+
+```{r}
+# strive for
+#z <- (a + b)^2 / d
+#mean(x, na.rm = TRUE)
+
+# avoid
+#z<-(a+b) ^ 2/d
+#mean(x ,na.rm = TRUE)
+```
+
+If you need to add extra spaces to ensure alignment (like with lots of mutate calls)
+
+```{r}
+flights |>
+  mutate(
+    speed      = distance / air_time * 60,
+    dep_hour   = dep_time %/% 100,
+    dep_minute = dep_time %% 100
+  )
+
+```
+
+## Pipes
+
+'|>' Should always have a space before it, and should always be the last code on a line. We've been doing this throughout, so I'm not giving another example. If the function has named arguments, but all named arguments on their own line (like with summarize, and mutate (see above)). Try not to write pipelines more than 10-15 lines long, break them up and '#' them. 
+
+## ggplot2
+
+The same rules as for pipes, but with the '+' rather than '|>'. 
+
+## Sectioning comments
+
+Cmd/Ctrl + Shift + C will create sectioning comments:
+
+ <!-- Sectioning Comments  -->

@@ -1,0 +1,335 @@
+---
+title: "r4ds_ch27_baseR_fieldguide"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+Here is a crash course on Base R (which you should spend some time learning because in some ways it is more powerful). Bilingualism is good. This is the last chapter in the programming section (so if the last few chapters felt a bit out of touch or scope, you made it).
+
+# Prerequisites
+
+```{r}
+pacman::p_load(tidyverse, here, broom, janitor)
+```
+
+# Selecting Multiple Elements with `[`
+
+`[` are used to call subcomponents from vectors and data frames. 
+
+## Subsetting Vectors
+
+Five main types of things you can subset a vector with:
+* A vector of positive integers, keeps those components in the same position
+* A vector of negative integers, drop the elements in those positions
+* A logical vector, keeps elements corresponding to a TRUE value
+* A character vector
+* Nothing
+
+```{r }
+# A vector of positive integers
+x <- c("one", "two", "three", "four", "five")
+x[c(3, 2, 5)]
+
+# You can repeat to create a longer output than input
+x[c(1, 1, 5, 5, 5, 2, 2)]
+
+# A vector of negative integers
+x[c(-1, -3, -5)]
+
+# A logical vector
+x <- c(10, 3, NA, 5, 8, 1, NA)
+
+# All non-missing
+x[!is.na(x)]
+
+# All even (or missing) values
+x[x %% 2 == 0]
+
+# A character vector
+x <- c(abe = 1, def = 2, xyz = 5)
+
+# this can be duplicated as well like positive integers
+x[c("xyz", "def", "def")]
+
+# NOTHING, not helpful for subsetting but IS helpful with 2D objects
+x[]
+```
+
+## Subsetting Data Frames
+
+You can subset dataframes a few different ways, but most common you will see `df[rows, col]`.
+
+```{r }
+df <- tibble(
+  x = 1:3,
+  y = c("a", "e", "f"),
+  z = runif(3)
+)
+
+# First row second column
+df[1,2]
+
+# Select all rows of columns x and y
+df[, c("x", "y")]
+
+# Select all rows where x > 1 and all columns
+df[df$x > 1, ]
+```
+
+data.frames and tibbles are mostly interchangeably. The big difference when subsetting is tibbles subset are tibbles, while dataframes that are subset are not always dataframes.
+
+```{r }
+df1 <- data.frame(x = 1:5, y = 1:5)
+
+# just a vector
+df1[, "x"]
+
+# a tibble
+df2 <- tibble(x = 1:5)
+
+# still a tibble
+df2[ , "x"]
+
+# you can avoid the above with data.frames with "DROP"
+df1[ , "x", drop = FALSE]
+```
+
+# dplyr Equivalents
+
+* Filter() is an equivalent to [] with a logical vector
+
+```{r }
+df <- tibble(
+  x = c(2, 3, 1, 1, NA),
+  y = letters[1:5],
+  z = runif(5)
+)
+
+# These are equivalent, but note the [] retain the NAs so we need to type more
+df |> filter(x > 1)  
+df[!is.na(df$x) & df$x > 1, ]
+```
+
+* Arrange() is equivalent to subsetting the rows with an integer vector
+
+```{r }
+df |> arrange(x, y)
+
+# same as
+df[order(df$x, df$y), ]
+```
+
+* Both select() and relocate() are similar to subsetting the columns with a character vector
+
+```{r }
+df |>  select(x, z)
+
+# similar, or same as
+df[ , c("x", "z")]
+```
+
+Base r provides a feature that combines filter and select called subset()
+
+```{r }
+df |> 
+  filter(x > 1) |> 
+  select(y, z)
+
+
+# same as
+df |> subset(x > 1, c(y, z))
+```
+
+### Exercises
+
+#### 27.1a Create functions that take a vector as input and return 
+1) The elements at even_numbered positions
+2) Every element except the last value
+3) Only even values (and no missing values)
+
+```{r }
+df <- data.frame(
+  x = 1:100,
+  y = letters[1:100],
+  z = runif(100)
+)
+
+df[c(2, 4, 6), ]<-NA
+
+keep_even_numbers <- function(vector) {
+  vector[vector %% 2 == 0]
+}
+
+keep_even_numbers(df$x)
+
+keep_all_but_last <- function(vector){
+ head(vector, n = -1)
+}
+
+keep_all_but_last(df)
+
+keep_even_numbers_dropNA <- function(vector) {
+  vector[vector %% 2 == 0 & !is.na(vector)]
+}
+
+keep_even_numbers_dropNA(df$x)
+
+```
+
+#### 27.2a Why is x[-which(x > 0)] not the same as x[x > 0]? 
+
+They appear to be the same. 
+```{r }
+x <- tibble(
+  x = -45:45
+)
+
+# these appear to be the same to me
+x[-which(x > 0), ] 
+x[x <= 0]
+```
+
+
+# Selecting Single Element with `$` and `[[ ]]`
+
+## Data Frames
+* `[[]]` can  extract by position or name
+* `$` can extract by name
+
+```{r }
+tb <- tibble(
+  x = 1:4,
+  y = c(10, 4, 1, 21)
+)
+
+# by position
+tb[[1]]
+
+# by name
+tb[["x"]]
+
+tb$x
+
+# Can create new columns (i.e., mutate())
+tb$z <- tb$x * tb$y
+
+```
+
+You can sometimes get faster data science with `$` then typing out summarize
+
+```{r }
+max(diamonds$carat)
+
+# vs
+diamonds |> 
+  summarize(max = max(carat))
+
+levels(diamonds$cut)
+
+# But you can also use pull() from tidyverse to do something as efficient and similar to $
+diamonds |> 
+  pull(carat) |> 
+  max()
+
+diamonds |> 
+  pull(cut) |> 
+  levels()
+```
+
+# Tibbles
+
+There are a couple of really important differences between tibbles and dataframes
+
+First, data.frames allow for partial matching of column names
+
+```{r }
+df <- data.frame(x1 = 1)
+df$x
+df$z
+
+tb <- tibble(x1 = 1)
+
+tb$x # no partial match
+tb$z
+
+```
+
+# Lists
+
+l <- list(
+a = 1:4,
+b = "a string",
+c = pi,
+d = list(-1, -5)
+)
+
+l
+
+# [ extracts a sublist
+str(l[1:2])
+
+str(l[1])
+
+str(l[4])
+
+# [[  and $ extract single components
+str(l[[1]])
+
+str(l$a)
+
+### Exercises
+
+#### 27.1b What happens when you use [[ with a positive itneger that's bigger than the length of the vector? What happens when you subset with a name that doesn't exist?
+ANSWER: ERROR, subscript out of bounds and ERROR not found
+```{r }
+df <- data.frame(
+  x = 1:10
+)
+
+df[[1]][1] # the first item, as a vector
+df[1][[1]] # the vector, as a vector
+```
+
+# Apply Family (pay attention here)
+
+lapply() is exactly to map() functions used in the book. There is no across but you can use lapply with [ ] to apply a function across columns:
+* sapply() is simplied lapply so it tries to give the simplest solution
+* vapply() is the formal and strict version
+* tapply() is a single number summary
+
+```{r }
+df <- tibble(a = 1, b = 2, c = "a", d = "b", e = 4)
+
+# Find numeric columns
+num_cols <- sapply(df, is.numeric)
+
+# Then transform with lapply
+df[, num_cols] <- lapply(df[ , num_cols, drop = FALSE], \(x) x * 2)
+
+# vapply
+vapply(df, is.numeric, logical(1))
+
+# tapply
+tapply(diamonds$price, diamonds$cut, mean)
+```
+
+
+# for Loops
+
+Both apply and map use for loops under the hood. These are the backbone of iteration:
+
+for(element in vector){
+# dosomethingin/withelement
+}
+
+# Plots
+plot(diamonds$carat, diamonds$price)

@@ -1,0 +1,48 @@
+# Ignore RStudio-specific files
+.Rproj.user/
+*.Rproj
+
+# Ignore R environment files
+.Rhistory
+.RData
+.Ruserdata
+
+# Ignore generated files
+*.Rcheck/
+*.pdf
+*.html
+*.png
+
+
+# Ignore data files
+.parquet
+.xlsx
+.Rds
+
+# Ignore shiny-related files
+.shiny/
+
+# Ignore R package files
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+
+# Ignore logs
+*.log
+
+# Ignore other project-specific files or directories
+/archive/
+/big_data/
+/data/
+/notes/
+/tables/
+/plots/
+
+# Ignore temporary files
+.Rapp.history
+.RDataTmp
+.RDataTmp.bak
+.RdataTmp.tag
+
+# Ignore random finder and mac settings
+.DS_Store

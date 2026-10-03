@@ -1,0 +1,110 @@
+---
+title: "r4ds_ch2_workflow_basic"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+The following code will walk through some basics in R coding. I am not going to spend a lot of time here as I've been using R for almost 20 years. 
+
+# Coding Basics
+
+You can use R to do some basic math and arithmetic problems (even linear algebra)
+
+```{r}
+
+1 / 200 * 30
+
+(59 + 73 + 2) / 3
+
+sin(pi/ 2)
+
+```
+
+You can create new objects with the assignment operator, to complete more complicated functions
+
+```{r}
+m <- 3
+x <- .04
+b <- 5000
+
+y <- m*x + b
+
+print(y)
+```
+
+You can combine multiple elements into a vector (i.e., vectorize) with *c()*
+
+```{r}
+
+primes <- c(2, 3, 5, 7, 11, 13)
+
+2 + primes
+```
+
+All R statements should be read: "object name gets value ___". 
+
+# Comments
+
+R will ignore anything with a '#' in front. This is useful for documenting what you are intending to do with your code. And, it helps make it reproducible.
+
+```{r}
+# create a vector of primes
+
+primes <- c(2, 3, 5, 7, 11, 13)
+
+# multiply your vector by the constant 69
+
+primes * 69
+
+```
+
+For short pieces of one line code, you shouldn't need to comment every line. However, you should focus on *why* your code is the way it is, rather than the *how* or *what*. The reason is, the how and the what can always be deduced (if tediously); but, if you change parameters your colleagues will like to know why. 
+
+# What's in a name?
+
+Object names can have letters and numbers and '_' or ".' in them. You should use a single convention and stick to it. The most 'accepted' is *snake case*, which would mean all your code, variable names, object names, etc., should be 'variable_name'. Aim to keep names small and obvious. So 'x' or 'posterior' rather than, 'list_of_primes' or 'posterior_distribution' whenever possilbe. 
+
+```{r}
+
+this_is_a_really_long_name <- 2.5
+
+```
+
+# Function Calling
+
+R has a lot of built in functions, and the freedom to create your own. 
+
+```{r}
+# this is explicit, and what you should do for reproducibility
+seq(from = 1, to = 99)
+
+# this is the same as above, where R will read in the order prescribed by the writer of the function.
+# if you don't know that order, this could be confusing
+seq(1, 99)
+```
+
+
+### Exercises
+
+#### (1) Why does this code not work?
+
+*Answer* Because your object is spelled wrong. 
+
+#### (2) Just spelling errors, not going to do that. 
+
+#### (3) What do the key commands in this question do? 
+
+*Answer* Brings up hot key mapping. 
+
+#### (4) Which of the plots is saved? 
+
+*Answer* The 'my_bar_plot' because you explicit specify that it should save that object.

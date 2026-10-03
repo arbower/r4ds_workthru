@@ -1,0 +1,604 @@
+---
+title: "r4ds_ch19_joins"
+author: "Andy B. PhD"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+    theme: spacelab
+---
+
+# Summary
+
+This chapter focuses on _mutating_ and _filtering_ joins. Mutating joins change or add new variables to one data frame matching observations in another, while filtering joins filter one data frame based on the data in another. 
+
+
+# Prerequisites
+
+```{r}
+# Packages you will need
+pacman::p_load(tidyverse, nycflights13)
+```
+
+
+# Keys
+
+To understand joins, you first need to understand how they can be joined together or connected through a pair of keys. 
+
+## Primary and Foreight Keys
+
+Every join involves a pair of keys: a _primary_ and a _foreign_ key. A primary key is a variable or a set of variables that uniquely identifies each observation. When more than one key is needed it is called a _compound_ key. 
+
+```{r}
+# the primary key in airlines dataframe is the carrier code and airline full name:
+glimpse(airlines)
+
+# the primary key in airports are the three letter FAA code
+glimpse(airports)
+
+# with planes, it's the tailnum
+glimpse(planes)
+
+# weather is a compound key of time and weather
+glimpse(weather)
+
+```
+
+A _foreign_ key is a variable of sets of variables that corresponds to a primary key in another table:
+* `flights$tailnum` is a foreign key that corresponds to the primary key `planes$tailnum`
+* `flights$carrier` is a foreign key that corresponds to the primary key `airlines$carrier`
+
+etc. 
+
+## Checking Primary Keys
+
+A quick way to check is to count() primary keys in each table. Where n < 1 you have a key, if it's > 1, you do not. 
+
+```{r}
+planes |> 
+  count(tailnum) |> 
+  filter(n > 1)
+
+weather |> 
+  count(time_hour, origin) |> 
+  filter(n > 1)
+```
+You should also check for missing values in your primary keys. If a value is missing, then an observation cannot be identified. 
+
+
+```{r}
+planes |> 
+  filter(is.na(tailnum))
+
+weather |> 
+  filter(is.na(time_hour) | is.na(origin))
+```
+## Surrogate Keys
+
+Flights is a bit trickier, and there are indeed three variables that uniquely identify each observation in flights.
+
+```{r}
+flights |> 
+  count(time_hour, carrier, flight) |> 
+  filter(n > 1)
+```
+
+Does the existence of a compound key ensure that it can be used as a primary key? Maybe. In this instance probably. But sometimes we might be better off by creating a _surrogate_ key (e.g., row number) that can be used. Surrogate keys are sometimes more useful and intuitive when talking with other humans. You can say: "Look for ID 45" rather than "Flight UA4320, departed at 9am on 01032013. 
+
+```{r}
+flights2 <- flights |> 
+  mutate(id = row_number(), .before = 1)
+
+flights2
+```
+
+### Exercises
+
+#### 19.1a We forgot to draw the relationship between `weather` and `airports` in their figure in the book. What should it look like? 
+
+#### 19.2a `weather` contains information for only the three origin airports in NYC. If it contained weather records for all airports in the US, what additional connection would it make to flights.
+
+_Answer_ destination information. So now you'd be able to look at the weather on flight departure and arrival to get a sense on why a flight might be delayed in air. 
+
+#### 19.3a The year, month, day, hour and origin almost form a compound key for the weather table, but there's an hour that has duplicate observations. Can you figure out what's special about that hour? 
+
+_Answer_ daylight savings. 
+```{r}
+
+weather |> 
+  count(year, month, day, hour, origin) |> 
+  filter(n > 1)
+
+```
+
+#### 19.4a We know that some days of the year are special and fewer people than usual fly on them (e.g., Chrismas Eve and Christmas Day). How might you represent that data as a data frame? What would be the primary key? How would it connect to the exiting data frames? 
+
+_Answer_ I would create the holiday data table with all major US (or world) observed holidays. The primary key would be a combination of month, day, and holiday full name (since there are different Thanksgivings, and Labor days, Independence days, etc.). That wouldn't matter as much for the nycflights13 dataset since it's just US.
+
+#### 19.5a Draw a diagram....look in the book. Althought it's about baseball which is cool!
+
+# Basic Joins
+
+mutating joins
+* left_join
+* inner_join
+* right_join
+* full_join
+
+filtering joins
+* semi_join
+* anti_join
+
+All have the same interface in R, they take a pair of tables x and y and join on some element returning a combined or new dataframe where the order and output is primarily determined by x. 
+
+## Mutating Joins
+
+A _mutating join_ allows you to combine variables from two data frames: it first matches observations by their keys and then copies across variables from one data frame to the other. Like `mutate()` new variables are added to the right. 
+
+Let's practice with a narrow data frame. 
+
+```{r}
+flights2 <- flights |> 
+  select(year, time_hour, origin, dest, tailnum, carrier)
+
+flights2
+```
+
+`left_join()` just like in SQL is used almost exclusively. Here we can join the airline name to our skinny dataset. 
+
+```{r}
+flights2 |> 
+  left_join(airlines)
+
+```
+
+or, we could find out the temperature and wind speed at each departure:
+
+```{r}
+flights2 |> 
+  left_join(weather |> select(origin, time_hour, temp, wind_speed))
+```
+
+or, what size of plane was flying (which gives you a chance to see what left_join does when you have missing values: i.e., it inserts an NA)
+
+```{r}
+flights2 |> 
+  left_join(planes |> select(tailnum, type, engines, seats))
+```
+
+## Specifying Join Keys
+
+By default, left join will use all available variables in both data frames, the so called _natural join_. This is useful for quick joins, but doesn't always work for example should we try and join the planes and flights datasets. They both have a year, but that year variable means something different. 
+
+```{r}
+# lot's of missing data is introduced because planes year is the year the plane was built. 
+flights2 |> 
+  left_join(planes)
+
+```
+
+Instead we want to ensure we specify that we only join by tailnum. 
+
+```{r}
+flights2 |> 
+  left_join(planes, join_by(tailnum))
+
+
+# the full code is what we call an equi join
+flights2 |> 
+  left_join(planes, join_by(tailnum == tailnum))
+```
+Second, this format is how you specify a join in different tables. For example, we can join the flights2 and airport datasets together by destination and origin. 
+
+```{r}
+# destination
+flights2 |> 
+  left_join(airports, join_by(dest == faa))
+
+# origin
+flights2 |> 
+  left_join(airports, join_by(origin == faa))
+```
+
+# Filtering Joins
+
+The primary action in a filtering join is to filter the rows. _Semi Joins_ and _Anti Joins_ are the two principle approaches to filter joins. Semi_joins filter all the rows in x that also exist in y. So, we could filter the airports dataset to just show origin airports:
+
+```{r}
+airports |> 
+  semi_join(flights2, join_by(faa == origin))
+
+```
+
+Or, to filter by only destinations:
+
+```{r}
+airports |> 
+  semi_join(flights2, join_by(faa == dest))
+
+```
+
+_Anti Joins_ work differently as they return all the rows in x that do not have a match in y. They are useful for finding implicit missing values in data. We can find all the implicit missing (those missing without an NA) from airports by looking for flights that don't have matching destination airports:
+
+```{r}
+flights2 |> 
+  anti_join(airports, join_by(dest == faa)) |> 
+  distinct(dest)
+
+```
+
+Or, we can find what tailnumbers are missing from planes:
+
+```{r}
+flights2 |> 
+  anti_join(planes, join_by(tailnum == tailnum)) |> 
+  distinct(tailnum)
+
+```
+
+
+### Exercises
+
+#### 19.1b Find the 48 hours that have the worst delays (over the course of a whole year). Cross-reference it with the weather data. Can you see any patterns?
+
+_Answer_ On days with wind, low temps, and poor visibility, you tend to see greater delays. 
+```{r}
+flight_weather <-
+  flights %>%
+  inner_join(weather, by = c(
+    "origin" = "origin",
+    "year" = "year",
+    "month" = "month",
+    "day" = "day",
+    "hour" = "hour"
+  ))
+
+flight_weather %>%
+  group_by(visib, wind_speed) %>%
+  summarise(delay = mean(dep_delay, na.rm = TRUE)) %>%
+  ggplot(aes(x = visib, y = delay, size = wind_speed)) +
+  geom_line() + geom_point()
+
+```
+
+#### 19.2b Imagine you've found the top 10 most popular destinations using the following code {see code}. How can you find all flights to those detinations? 
+
+```{r}
+top_dest <- flights2 |> 
+  count(dest, sort = TRUE) |> 
+  head(10)
+
+# one way to do that
+top_dest |> 
+  inner_join(flights2, join_by(dest == dest))
+```
+
+
+#### 19.3b Does every departing flight have corresponding weather data for that hour? 
+
+_Answer_ No, looks like 1,556 flights do not have weather data. With a vast majority of those occurrences of missing on December 31, 2013. 
+```{r}
+flights |> 
+  anti_join(weather, by = c(
+    "origin" = "origin",
+    "year" = "year",
+    "month" = "month",
+    "day" = "day",
+    "hour" = "hour"
+  ))
+
+```
+
+#### 19.4b What do tailnum that don't have a matching record in planes have in common? (Hint: One variable explains about 90% of the problems)
+
+
+_Answer_ The only explanation even remotely close to that amount of explanatory power was that a majority of the missing tail numbers are AA and MQ carriers. Which is a subsidiary of American Airlines, so something going on there. 
+```{r}
+flights |> 
+  anti_join(planes, join_by(tailnum == tailnum)) |> 
+  count(carrier)
+  
+```
+
+#### 19.5b Add a column to planes that lists every carrier that has flown that plane. You might expect that there's an implicit relationship between plane and airline, because each plane is flown by a single airline. Confirm or reject this hypothesis using the tools you've learne din previous chapters. 
+
+_Answer_ There are 17. ExpressJet and Endeavor Air seemingly trade planes. 
+
+```{r}
+planes |> 
+  left_join(flights, join_by(tailnum)) |> 
+  filter(!is.na(tailnum)) |> 
+  distinct(tailnum, carrier) -> planes_carriers
+
+  
+planes_carriers |> 
+  count(tailnum) |> 
+  filter(n > 1) 
+  
+planes_carriers |> 
+  group_by(tailnum) |> 
+  filter(n() > 1)  |> #I didn't think abou this. 
+  left_join(airlines, join_by(carrier)) |> 
+  arrange(tailnum, carrier) 
+
+```
+
+#### 19.6b Add the latitude and longitude of origin and destination airport to flights. Is it easier to rename the columns before or after the join? 
+
+_Answer_ It's no issue to do it during the join. 
+```{r}
+flights |> 
+  left_join(airports |> 
+              select(lat, lon, faa) |> 
+              rename("orig_lat" = "lat", 
+                     "orig_lon" = "lon"), 
+            join_by(origin == faa)) -> origins
+
+flights |> 
+  left_join(airports |> 
+              select(lat, lon, faa) |> 
+              rename("dest_lat" = "lat", 
+                     "dest_lon" = "lon"), 
+            join_by(dest == faa)) -> destinations
+
+origins |> 
+  inner_join(destinations) 
+```
+
+#### 19.7b Compute the average delay by destination and then join on the airports data frame so you can show the spatial distribution of delays. Here's an easy way to draw a map of the United States. 
+
+```{r}
+flights  |> 
+  group_by(dest) |> 
+  summarise(delay = mean(arr_delay, na.rm = TRUE)) |> 
+  inner_join(airports, by = c("dest" = "faa")) |> 
+  ggplot(aes(y = lat, x = lon, colour = delay)) +
+  borders("state") +
+  geom_point() +
+  coord_quickmap() +
+  scale_colour_viridis_c()
+```
+
+#### 19.7b What happened on June 13, 2013? Draw a map of the delays, and then use Google to cross-referenc with the weather.
+
+_Answer_ There was a massive derecho. 
+```{r}
+flights |> 
+  filter(month == 06, day == 13) |> 
+  group_by(dest) |> 
+  summarise(delay = mean(arr_delay, na.rm = TRUE)) |> 
+  inner_join(airports, by = c("dest" = "faa")) |> 
+  ggplot(aes(y = lat, x = lon, size = delay, colour = delay)) +
+  borders("state") +
+  geom_point() +
+  coord_quickmap() +
+  scale_colour_viridis_c()
+```
+
+# How do Joins work? 
+
+Let's work through a toy example so we can really understand the concept of joins. 
+
+```{r}
+x <- tribble(
+  ~key, ~val_x,
+  1, "x1",
+  2, "x2",
+  3, "x3"
+)
+
+y <- tribble(
+  ~key, ~val_y,
+  1, "y1",
+  2, "y2",
+  4, "y3"
+)
+```
+
+
+## Equi Joins
+
+```{r}
+# inner join matches all rows in x that are also in y
+x |>  inner_join(y)
+
+# left join matches all values in y with x, but creates a "virtual" match where values in x exist but they do not exist in y
+x |>  left_join(y)
+
+# right join same as left just the other direction
+x |> right_join(y)
+
+# full join matches all rows and creates virtuals for each rows without corresponding data in the other frames
+x |> full_join(y)
+```
+
+## Row Matching
+
+One issue, especially with inner_joins() is that you can increase your number of rows. 
+* If it doesn't match anything, it's dropped
+* If it matches one row in y, it's preserved
+* If it matches more than one row in y, it's duplicated once for each match. 
+
+```{r}
+# altering our dataframes to show you the duplication problem with row matching and inner joins
+
+x <- tribble(
+  ~key, ~val_x,
+  1, "x1",
+  2, "x2",
+  3, "x3"
+)
+
+y <- tribble(
+  ~key, ~val_y,
+  1, "y1",
+  2, "y2",
+  2, "y4"
+)
+
+x  |> inner_join(y) #x2 has now been duplicated
+```
+
+## Many-to-Many 
+
+In R, a warning will spit out if there are a many-to-many join:
+
+```{r}
+df1 <- tibble(key = c(1, 2, 2), val_x = c("x1", "x2", "x3"))
+df2 <- tibble(key = c(1, 2, 2), val_y = c("y1", "y2", "y3"))
+
+df1 |> inner_join(df2) #mas duplication
+```
+## Filtering Joins
+
+The number of matches determines the behavior of the filtering joins. Where the semi-join filters rows in x that match in x and y only and anti_join matches in x those rows that do not exist in y. 
+
+```{r}
+x <- tribble(
+  ~key, ~val_x,
+  1, "x1",
+  2, "x2",
+  3, "x3"
+)
+
+y <- tribble(
+  ~key, ~val_y,
+  1, "y1",
+  2, "y2",
+  4, "y3"
+)
+
+# semi-join matches all in x that are also in y
+x |> semi_join(y, by = "key")
+
+# anti_join matches all in x that do not exist in y
+x |> anti_join(y, by = "key")
+```
+
+## Non-Equi Joins
+
+In the equi joins, because the keys are equal, you don't explicitly call them out. With non-equi joins they are not necessarily equal. You can show this with `keep = TRUE`. It's helpful to show the keys in non-equi joins. 
+
+```{r}
+x |> left_join(y, by = "key", keep = TRUE)
+```
+
+* Cross Joins, match every pair of rows
+* Inequality joins, Use <, >, <=, >=, ==
+* Rolling joins, similar to inequality but only find the closest match
+* Overlap joins, a special type of inequality join designed to work with ranges
+
+## Cross Joins
+
+Immediately you can see the utility when you want to create something that requires a permutation. So, all possible name combinations. They are often self-joins. 
+
+```{r}
+df <- tibble(
+  name = c("John", "Simon", "Tracy", "Max")
+)
+
+df |> cross_join(df) #cross joins are self joins
+```
+
+## Inequality Joins
+
+They are hard to be useful, but one small utility is restricting cross joins
+
+```{r}
+df <- tibble(
+  id = 1:4,
+  name = c("John", "Simon", "Tracy", "Max")
+)
+
+# inequality join
+df |> left_join(df, join_by(id < id))
+
+```
+
+## Rolling Joins
+
+Instead of getting _every_ row that matches, you only get the most recent, closest row. Useful for looking at any time-series data (e.g., the last game someone hit a homerun). Or, maybe you have to plan birthday parties every quarter for all birthdays in a quarter.
+
+```{r}
+parties <- tibble(
+  q = 1:4,
+  party = ymd(c("2022-01-10", "2022-04-04", "2022-07-11", "2022-10-03"))
+)
+
+employees <- tibble(
+  name = sample(babynames::babynames$name, 100),
+  birthday = ymd("2022-01-01") + (sample(365, 100, replace = TRUE) - 1)
+)
+
+employees
+
+# so let's find them
+employees |> 
+  left_join(parties, join_by(closest(birthday >= party)))
+
+# the only problem with this approach for that specific issue, the folks with birthdays befores 01/10 don't get a party
+employees |> 
+  anti_join(parties, join_by(closest(birthday >= party))) # don't have any one randomly at that time but you get the point. 
+
+```
+
+## Overlap Joins
+
+So, instead of rolling joins we can solve the birthday with overlap joins. Overlap joins provide a few helpers that make them more functional than rolling joins:
+
+* between(x, y_lower, y_upper) x >= y_lower, x <= y_upper
+* within(x_lower, x_upper, y_lower, y_upper) x_lower >= y_lower, x_upper <= y_upper
+* overlap(x_lower, x_upper, y_lower, y_upper) x_lower <= y_upper, x_upper >= y_lower
+
+
+```{r}
+parties <- tibble(
+  q = 1:4,
+  party = ymd(c("2022-01-10", "2022-04-04", "2022-07-11", "2022-10-03")),
+  start = ymd(c("2022-01-01", "2022-04-04", "2022-07-11", "2022-10-03")),
+  end = ymd(c("2022-04-03", "2022-07-11", "2022-10-03", "2022-12-31"))
+)
+
+# you can use overlap to make sure you have no overlapping intervals
+parties |> 
+  inner_join(parties, join_by(overlaps(start, end, start, end), q < q)) |> 
+  select(start.x, end.x, start.y, end.y)
+
+# we have two fixed them below
+parties <- tibble(
+  q = 1:4,
+  party = ymd(c("2022-01-10", "2022-04-04", "2022-07-11", "2022-10-03")),
+  start = ymd(c("2022-01-01", "2022-04-04", "2022-07-11", "2022-10-03")),
+  end = ymd(c("2022-04-03", "2022-07-10", "2022-10-02", "2022-12-31"))
+)
+
+# now we can include the unmatched = "error" to quickly find all those that don't have a match
+employees |> 
+  inner_join(parties, join_by(between(birthday, start, end)), unmatched = "error")
+```
+
+#### Exercises
+
+### 19.1c Can you explain what's happening with the keys in this equi join? Why are they different?
+
+_Answer_ Virtual keys to find the matches. There is pseudo difference created when they don't match on an full join. 
+
+```{r}
+x  |> full_join(y, by = "key")
+
+x |> full_join(y, by = "key", keep = TRUE)
+```
+
+### 19.2c What happens if we remove q < q from our party query?
+
+_Answer_ You're specifying for the birthday of a person in the employees to match between these periods. Without it, you'll just get the intervals
+
+```{r}
+parties |> 
+  inner_join(parties, join_by(overlaps(start, end, start, end))) |> 
+  select(start.x, end.x, start.y, end.y)
+
+```
